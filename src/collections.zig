@@ -7,3 +7,4 @@ pub const bit_set = @import("./collections/bit_set.zig");
 pub const AutoBitSet = bit_set.AutoBitSet;
 pub const HiveArray = @import("./collections/hive_array.zig").HiveArray;
 pub const BoundedArray = @import("./collections/bounded_array.zig").BoundedArray;
+pub const EnumTable = @import("./collections/enum_table.zig").EnumTable;
