@@ -1,5 +1,9 @@
-// This is close to WHATWG URL, but we don't want the validation errors
+/// This is not a URL parser, but rather a view into an
+/// already-proven-to-be-valid URL string.
+///
+/// See URL.zig for the actual URL parser.
 pub const URL = struct {
+    // This is close to WHATWG URL, but we don't want the validation errors
     const log = Output.scoped(.URL, .visible);
 
     hash: string = "",

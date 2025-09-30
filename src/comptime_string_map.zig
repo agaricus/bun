@@ -299,6 +299,43 @@ pub fn ComptimeStringMapWithKeyType(comptime KeyType: type, comptime V: type, co
 
             return null;
         }
+
+        /// Reverse lookup: get the string key for a given value.
+        /// If multiple keys map to the same value, returns the first match in sorted order.
+        pub fn getStrings(value: V) ?[]const KeyType {
+            inline for (kvs) |kv| {
+                if (kv.value == value) return kv.key;
+            }
+            return null;
+        }
+
+        /// Reverse lookup: get the string key for a given value (runtime version).
+        pub fn getStringRuntime(value: V) []const KeyType {
+            inline for (kvs) |kv| {
+                if (kv.value == value) return kv.key;
+            }
+            unreachable;
+        }
+
+        /// Reverse lookup: get the string key for a given value.
+        /// Asserts at compile time that exactly one key maps to this value.
+        pub fn getString(comptime value: V) []const KeyType {
+            comptime {
+                var found: ?[]const KeyType = null;
+                for (kvs) |kv| {
+                    if (kv.value == value) {
+                        if (found != null) {
+                            @compileError("Multiple keys map to the same value in getString()");
+                        }
+                        found = kv.key;
+                    }
+                }
+                if (found) |key| {
+                    return key;
+                }
+                @compileError("No key found for the given value in getString()");
+            }
+        }
     };
 }
 

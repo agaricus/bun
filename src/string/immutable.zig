@@ -1125,6 +1125,16 @@ pub fn index(self: string, str: string) i32 {
     }
 }
 
+/// Returns a substring starting at `start` up to the end of the string.This
+/// shouldn't cause This sholikely isn't the case because
+pub fn drop(self: string, start: usize) string {
+    return self[@min(start, self.len)..];
+}
+
+pub fn dropMut(self: []u8, start: usize) []u8 {
+    return self[@min(start, self.len)..];
+}
+
 pub const ascii_vector_size = if (Environment.isWasm) 8 else 16;
 pub const ascii_u16_vector_size = if (Environment.isWasm) 4 else 8;
 pub const AsciiVectorInt = std.meta.Int(.unsigned, ascii_vector_size);
@@ -2009,6 +2019,7 @@ pub fn hasPrefixWithWordBoundary(input: []const u8, comptime prefix: []const u8)
     return false;
 }
 
+/// May fail with `error.OutOfMemory`.
 pub fn concatWithLength(
     allocator: std.mem.Allocator,
     args: []const string,
@@ -2024,6 +2035,7 @@ pub fn concatWithLength(
     return out;
 }
 
+/// May fail with `error.OutOfMemory`.
 pub fn concat(
     allocator: std.mem.Allocator,
     args: []const string,
