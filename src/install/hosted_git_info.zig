@@ -522,9 +522,8 @@ fn tryCreateUrl(
 
     switch (proto_pair.protocol) {
         .unknown => {
-            // Honestly, we're kind of SOL here. Let's try parsing this
-            // as-is and if it works, hey, great, if it doesn't, well,
-            // we're pretty cooked.
+            // Honestly, we're kind of SOL here. Let's try parsing this as-is and if it works, hey,
+            // great, if it doesn't, well, we're pretty cooked.
             return bun.jsc.URL.fromString(.init(proto_pair.url));
         },
         .custom => |proto_str| {
