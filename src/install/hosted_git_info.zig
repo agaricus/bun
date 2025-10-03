@@ -5,6 +5,9 @@
 //! believes there are bugs in the original library, this library aims to be
 //! bug-for-bug compatible with the original.
 
+// TODO(markovejnovic): This is a fraction of what hosted-git-info actually delivers, but it's the
+// fraction that matters for us. If we want to make this API public, we will likely need to expose
+// more information.
 pub const HostedGitInfo = struct {
     type: []const u8,
 };
@@ -19,15 +22,14 @@ pub fn parseUrl(
     allocator: std.mem.Allocator,
     npa_str: []u8,
 ) !*bun.jsc.URL {
-    const proto_url = normalizeProtocol(npa_str);
-    // We can try to create a URL directly.
-    if (tryCreateUrl(allocator, &proto_url)) |url| {
+    // We can try to create a URL directly. If that succeeds, great. Ship it.
+    if (bun.jsc.URL.fromString(.init(npa_str))) |url| {
         return url;
     }
 
-    // Now that may fail, if the URL is not nicely formatted. In that case,
-    // we try to correct the URL and parse it.
-    const corrected = correctUrlMut(proto_url);
+    // Now that may fail, if the URL is not nicely formatted. In that case, we try to correct the
+    // URL and parse it.
+    const corrected = correctUrlMut(normalizeProtocol(npa_str));
     if (tryCreateUrl(allocator, &corrected)) |url| {
         return url;
     }
@@ -460,8 +462,8 @@ fn normalizeProtocol(npa_str: []u8) UrlProtocolPair {
     };
 }
 
-/// Attempt to correct an scp-style URL into a proper URL, parsable with
-/// bun.jsc.URL. Potentially mutates the original input.
+/// Attempt to correct an scp-style URL into a proper URL, parsable with bun.jsc.URL. Potentially
+/// mutates the original input.
 ///
 /// This function assumes that the input is an scp-style URL.
 fn correctUrlMut(url_proto_pair: UrlProtocolPair) UrlProtocolPair {
@@ -498,9 +500,8 @@ fn concatPartsToUrl(
     allocator: std.mem.Allocator,
     parts: []const []const u8,
 ) ?*bun.jsc.URL {
-    // TODO(markovejnovic): There is a sad unnecessary allocation
-    // here that I don't know how to get rid of -- in theory,
-    // URL.zig could allocate once.
+    // TODO(markovejnovic): There is a sad unnecessary allocation here that I don't know how to get
+    // rid of -- in theory, URL.zig could allocate once.
     const new_str = bun.handleOom(bun.strings.concat(allocator, parts));
     defer allocator.free(new_str);
     return bun.jsc.URL.fromString(bun.String.init(new_str));
