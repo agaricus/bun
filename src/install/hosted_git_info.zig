@@ -93,6 +93,7 @@ pub const TestingAPIs = struct {
         const parsed = parseUrl(allocator, as_utf8.mut()) catch |err| {
             return go.throw("Invalid Git URL: {}", .{err});
         };
+        defer parsed.deinit();
 
         return parsed.href().toJS(go);
     }
