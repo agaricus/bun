@@ -1131,6 +1131,14 @@ pub fn drop(self: string, start: usize) string {
     return self[@min(start, self.len)..];
 }
 
+/// Return a slice with the prefix removed, if it exists.
+pub fn dropPrefix(self: string, prefix: string) string {
+    if (startsWith(self, prefix)) {
+        return drop(self, prefix.len);
+    }
+    return self;
+}
+
 pub fn dropMut(self: []u8, start: usize) []u8 {
     return self[@min(start, self.len)..];
 }

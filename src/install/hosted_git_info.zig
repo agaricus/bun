@@ -51,13 +51,11 @@ pub fn fromUrl(
         //
         // TODO(markovejnovic): Perhaps we can avoid this allocation...
         // This one seems quite easy to get rid of.
-        git_url_mut = try bun.strings.concat(allocator, "github:", git_url);
+        git_url_mut = try bun.strings.concat(allocator, &.{ "github:", git_url });
         defer allocator.free(git_url_mut);
     }
 
-    const parsed: *bun.jsc.URL = parseUrl(allocator, git_url_mut) orelse {
-        return null;
-    };
+    const parsed: *bun.jsc.URL = try parseUrl(allocator, git_url_mut);
     const maybe_host_info = deduceHostInfo(parsed);
     _ = maybe_host_info;
 
@@ -72,13 +70,13 @@ pub fn fromUrl(
 
 pub const TestingAPIs = struct {
     pub fn jsParseUrl(
-        global_object: *jsc.JSGlobalObject,
+        go: *jsc.JSGlobalObject,
         callframe: *jsc.CallFrame,
     ) bun.JSError!jsc.JSValue {
         const allocator = bun.default_allocator;
 
         if (callframe.argumentsCount() != 1) {
-            return global_object.throw(
+            return go.throw(
                 "hostedGitInfo.prototype.parseUrl takes exactly 1 argument",
                 .{},
             );
@@ -86,7 +84,7 @@ pub const TestingAPIs = struct {
 
         const arg0 = callframe.argument(0);
         if (!arg0.isString()) {
-            return global_object.throw(
+            return go.throw(
                 "hostedGitInfo.prototype.parseUrl takes a string as its " ++
                     "first argument",
                 .{},
@@ -95,16 +93,53 @@ pub const TestingAPIs = struct {
 
         // TODO(markovejnovic): This feels like there's too much going on all
         // to give us a slice. Maybe there's a better way to code this up.
-        const npa_str = try arg0.toBunString(global_object);
+        const npa_str = try arg0.toBunString(go);
         defer npa_str.deref();
         var as_utf8 = npa_str.toUTF8(allocator);
         defer as_utf8.deinit();
         const parsed = parseUrl(allocator, as_utf8.mut()) catch |err| {
-            return global_object.throw("Invalid Git URL: {}", .{err});
+            return go.throw("Invalid Git URL: {}", .{err});
         };
 
-        return parsed.href().toJS(global_object);
+        return parsed.href().toJS(go);
     }
+
+    pub fn jsFromUrl(
+        go: *jsc.JSGlobalObject,
+        callframe: *jsc.CallFrame,
+    ) bun.JSError!jsc.JSValue {
+        const allocator = bun.default_allocator;
+
+        // TODO(markovejnovic): The original hosted-git-info actually takes another argument that
+        //                      allows you to inject options. Seems untested so we didn't implement
+        //                      it.
+        if (callframe.argumentsCount() != 1) {
+            return go.throw("hostedGitInfo.prototype.fromUrl takes exactly 1 argument", .{});
+        }
+
+        const arg0 = callframe.argument(0);
+        if (!arg0.isString()) {
+            return go.throw(
+                "hostedGitInfo.prototype.fromUrl takes a string as its first argument",
+                .{},
+            );
+        }
+
+        // TODO(markovejnovic): This feels like there's too much going on all to give us a slice.
+        // Maybe there's a better way to code this up.
+        const npa_str = try arg0.toBunString(go);
+        defer npa_str.deref();
+        var as_utf8 = npa_str.toUTF8(allocator);
+        defer as_utf8.deinit();
+        const parsed = fromUrl(allocator, as_utf8.mut()) catch |err| {
+            return go.throw("Invalid Git URL: {}", .{err});
+        } orelse {
+            return .null;
+        };
+
+        return bun.String.fromBytes(parsed.type).toJS(go);
+    }
+
     const jsc = bun.jsc;
 };
 
@@ -150,12 +185,9 @@ const HostInfo = struct {
     extract: u8, // TODO(markovejnovic): Wrong type obviously lol
 };
 
-/// This table holds information on all the special hosts supported by this
-/// library.
-const host_table = std.EnumMap(Host, HostInfo).init(.{
-    .{
-        .key = .github,
-        .value = .{
+fn getHostInfo(host: Host) HostInfo {
+    return switch (host) {
+        .github => .{
             .protocols = &.{
                 .git,
                 .http,
@@ -169,33 +201,33 @@ const host_table = std.EnumMap(Host, HostInfo).init(.{
             .tree_path = "tree",
             .blob_path = "blob",
             .edit_path = "edit",
+            .edit_template = 0,
+            .tarball_template = 0,
+            .extract = 0,
         },
-    },
-    .{
-        .key = .bitbucket,
-        .value = .{
+        .bitbucket => .{
             .protocols = &.{ .git_plus_ssh, .git_plus_https, .ssh, .https },
             .domain = "bitbucket.org",
             .shortcut = "bitbucket:",
             .tree_path = "src",
             .blob_path = "src",
             .edit_path = "?mode=edit",
+            .edit_template = 0,
+            .tarball_template = 0,
+            .extract = 0,
         },
-    },
-    .{
-        .key = .gitlab,
-        .value = .{
+        .gitlab => .{
             .protocols = &.{ .git_plus_ssh, .git_plus_https, .ssh, .https },
             .domain = "gitlab.com",
             .shortcut = "gitlab:",
             .tree_path = "tree",
             .blob_path = "tree",
             .edit_path = "-/edit",
+            .edit_template = 0,
+            .tarball_template = 0,
+            .extract = 0,
         },
-    },
-    .{
-        .key = .gist,
-        .value = .{
+        .gist => .{
             .protocols = &.{
                 .git,
                 .git_plus_ssh,
@@ -208,54 +240,57 @@ const host_table = std.EnumMap(Host, HostInfo).init(.{
             .tree_path = null,
             .blob_path = null,
             .edit_path = "edit",
+            .edit_template = 0,
+            .tarball_template = 0,
+            .extract = 0,
         },
-    },
-    .{
-        .key = .sourcehut,
-        .value = .{
+        .sourcehut => .{
             .protocols = &.{ .git_plus_ssh, .https },
             .domain = "git.sr.ht",
             .shortcut = "sourcehut:",
             .tree_path = "tree",
             .blob_path = "tree",
+            .edit_path = null,
+            .edit_template = 0,
+            .tarball_template = 0,
+            .extract = 0,
         },
-    },
-});
+    };
+}
 
 /// Search for the appropriate `HostInfo` by the protocol string.
-fn findHostInfoByProtocol(protocol: []const u8) ?*const HostInfo {
-    // Ah how nice it would be:
-    // std.algorithm.find(host_table,
-    //                    |e| std.mem.eql(u8, e.value.shortcut, protocol));
-    // But alas https://github.com/ziglang/zig/issues/1048
-    while (host_table.iterator()) |entry| {
-        if (std.mem.eql(u8, entry.value.shortcut, protocol)) {
-            return &entry.value;
+fn findHostInfoByProtocol(protocol: []const u8) ?HostInfo {
+    inline for (@typeInfo(Host).@"enum".fields) |field| {
+        const host: Host = @enumFromInt(field.value);
+        const info = getHostInfo(host);
+        if (std.mem.eql(u8, info.shortcut, protocol)) {
+            return info;
         }
     }
-
     return null;
 }
 
-fn findHostInfoByDomain(hostname: []const u8) ?*const HostInfo {
-    while (host_table.iterator()) |entry| {
-        if (std.mem.eql(u8, entry.value.domain, hostname)) {
-            return &entry.value;
+fn findHostInfoByDomain(hostname: []const u8) ?HostInfo {
+    inline for (@typeInfo(Host).@"enum".fields) |field| {
+        const host: Host = @enumFromInt(field.value);
+        const info = getHostInfo(host);
+        if (std.mem.eql(u8, info.domain, hostname)) {
+            return info;
         }
     }
-
     return null;
 }
 
 /// Search the the appropriate `HostInfo` by deducing it from the URL.
-fn deduceHostInfo(url: *const bun.jsc.URL) ?*const HostInfo {
-    if (findHostInfoByProtocol(url.protocol())) |host_info| {
+fn deduceHostInfo(url: *bun.jsc.URL) ?HostInfo {
+    const proto_str = url.protocol();
+    if (findHostInfoByProtocol(proto_str.byteSlice())) |host_info| {
         return host_info;
     }
 
     // TODO(markovejnovic): I don't know if this conversion is correct.
     const as_slice = url.hostname().byteSlice();
-    const hostname = std.mem.cutPrefix(u8, as_slice, "www.") orelse as_slice;
+    const hostname = bun.strings.withoutPrefixComptime(as_slice, "www.");
     if (findHostInfoByDomain(hostname)) |host_info| {
         return host_info;
     }
@@ -299,7 +334,7 @@ fn isGithubShorthand(
             },
 
             '#' => {
-                pound_idx = i;
+                pound_idx = @intCast(i);
             },
             '/' => {
                 // Implements secondSlashOnlyAfterHash
