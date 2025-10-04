@@ -16,7 +16,7 @@ import {
   TLS_REDIS_URL,
 } from "./test-utils";
 import type { RedisTestStartMessage } from "./valkey.failing-subscriber";
-import type {Message, RunInfoMessage, ValkeyReceivedMessage, ExceptionMessage} from "./valkey.failing-subscriber-no-ipc";
+import type { Message } from "./valkey.failing-subscriber-no-ipc";
 
 for (const connectionType of [ConnectionType.TLS, ConnectionType.TCP]) {
   const ctx = { ..._ctx, redis: connectionType ? _ctx.redis : (_ctx.redisTLS as RedisClient) };
@@ -6585,15 +6585,15 @@ for (const connectionType of [ConnectionType.TLS, ConnectionType.TCP]) {
         const reader = subscriberProc.stdout.getReader();
         async function* readLines() {
           const decoder = new TextDecoder();
-          let buffer = '';
+          let buffer = "";
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
             for (const line of lines) {
               yield line;
