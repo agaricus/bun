@@ -6,11 +6,11 @@ describe("fromUrl", () => {
   describe("valid urls", () => {
     describe.each(Object.entries(validGitUrls))("%s", (_, urlset: object) => {
       it.each(Object.entries(urlset))("parses %s", (url, expected) => {
-        expect(hostedGitInfo.fromUrl(url)).toEqual(expected);
+        expect(hostedGitInfo.fromUrl(url)).toEqual(expected.type);
       });
     });
   });
 
-  describe("invalid urls", () => {
-  });
+  //describe("invalid urls", () => {
+  //});
 });

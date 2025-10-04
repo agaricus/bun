@@ -56,8 +56,14 @@ pub fn fromUrl(
     }
 
     const parsed: *bun.jsc.URL = try parseUrl(allocator, git_url_mut);
-    const maybe_host_info = deduceHostInfo(parsed);
-    _ = maybe_host_info;
+    defer parsed.deinit();
+
+    if (deduceHostInfo(parsed)) |host_info| {
+        return .{
+            // We have to slice out the colon at the end, since the user isn't expecting that.
+            .type = host_info.shortcut[0 .. host_info.shortcut.len - 1],
+        };
+    }
 
     // Now that we parsed the URL, great, we can try to we can look up the
     // host by the protocol. So, you might actually find something like
@@ -263,7 +269,9 @@ fn findHostInfoByProtocol(protocol: []const u8) ?HostInfo {
     inline for (@typeInfo(Host).@"enum".fields) |field| {
         const host: Host = @enumFromInt(field.value);
         const info = getHostInfo(host);
-        if (std.mem.eql(u8, info.shortcut, protocol)) {
+        // We slice the last character off since URL.protocol() returns foo out of foo:// and
+        // info.shortcut includes the colon.
+        if (std.mem.eql(u8, info.shortcut[0 .. info.shortcut.len - 1], protocol)) {
             return info;
         }
     }
