@@ -12,16 +12,12 @@ pub const HostedGitInfo = struct {
     type: []const u8,
 };
 
-/// Handles input like git:github.com:user/repo and inserting the // after
-/// the first : if necessary
+/// Handles input like git:github.com:user/repo and inserting the // after the first : if necessary
 ///
 /// May error with `error.InvalidGitUrl` if the URL is not valid.
 ///
 /// Note that this may or may not allocate but it manages its own memory.
-pub fn parseUrl(
-    allocator: std.mem.Allocator,
-    npa_str: []u8,
-) !*bun.jsc.URL {
+pub fn parseUrl(allocator: std.mem.Allocator, npa_str: []u8) !*bun.jsc.URL {
     // We can try to create a URL directly. If that succeeds, great. Ship it.
     if (bun.jsc.URL.fromString(.init(npa_str))) |url| {
         return url;
@@ -38,16 +34,12 @@ pub fn parseUrl(
     return error.InvalidGitUrl;
 }
 
-pub fn fromUrl(
-    allocator: std.mem.Allocator,
-    git_url: []u8,
-) !?HostedGitInfo {
+pub fn fromUrl(allocator: std.mem.Allocator, git_url: []u8) !?HostedGitInfo {
     var git_url_mut = git_url;
     if (isGithubShorthand(git_url)) {
         // In this case we have to prefix the url with `github:`.
         //
-        // NOTE(markovejnovic): I don't exactly understand why this is
-        // treated specially.
+        // NOTE(markovejnovic): I don't exactly understand why this is treated specially.
         //
         // TODO(markovejnovic): Perhaps we can avoid this allocation...
         // This one seems quite easy to get rid of.
@@ -65,20 +57,15 @@ pub fn fromUrl(
         };
     }
 
-    // Now that we parsed the URL, great, we can try to we can look up the
-    // host by the protocol. So, you might actually find something like
-    // this:
-    // github://foo/bar
-    // sourcehut://foo/bar
+    // Now that we parsed the URL, great, we can try to we can look up the host by the protocol.
+    // So, you might actually find something like this:
+    // github://foo/bar or sourcehut://foo/bar
     // We have to now determine the shortcut.
     return null;
 }
 
 pub const TestingAPIs = struct {
-    pub fn jsParseUrl(
-        go: *jsc.JSGlobalObject,
-        callframe: *jsc.CallFrame,
-    ) bun.JSError!jsc.JSValue {
+    pub fn jsParseUrl(go: *jsc.JSGlobalObject, callframe: *jsc.CallFrame) bun.JSError!jsc.JSValue {
         const allocator = bun.default_allocator;
 
         if (callframe.argumentsCount() != 1) {
@@ -110,10 +97,7 @@ pub const TestingAPIs = struct {
         return parsed.href().toJS(go);
     }
 
-    pub fn jsFromUrl(
-        go: *jsc.JSGlobalObject,
-        callframe: *jsc.CallFrame,
-    ) bun.JSError!jsc.JSValue {
+    pub fn jsFromUrl(go: *jsc.JSGlobalObject, callframe: *jsc.CallFrame) bun.JSError!jsc.JSValue {
         const allocator = bun.default_allocator;
 
         // TODO(markovejnovic): The original hosted-git-info actually takes another argument that
@@ -308,18 +292,14 @@ fn deduceHostInfo(url: *bun.jsc.URL) ?HostInfo {
 
 /// Test whether the given node-package-arg string is a GitHub shorthand.
 ///
-/// This mirrors the implementation of hosted-git-info, though it is
-/// significantly faster.
+/// This mirrors the implementation of hosted-git-info, though it is significantly faster.
 fn isGithubShorthand(
     npa_str: []const u8,
 ) bool {
-    // The implementation in hosted-git-info is a multi-pass algorithm.
-    // We've opted to implement a single-pass algorithm for better
-    // performance.
+    // The implementation in hosted-git-info is a multi-pass algorithm. We've opted to implement a
+    // single-pass algorithm for better performance.
     //
-    // This could be even faster with SIMD but this is probably good
-    // enough for now.
-
+    // This could be even faster with SIMD but this is probably good enough for now.
     if (npa_str.len < 1) {
         return false;
     }
@@ -377,30 +357,25 @@ const UrlProtocolPair = struct {
     protocol: union(enum) {
         well_formed: UrlProtocol,
 
-        // A protocol which is not known by the library. Includes the :
-        // character, but not the double-slash, so `foo://bar` would yield
-        // `foo:`.
+        // A protocol which is not known by the library. Includes the : character, but not the
+        // double-slash, so `foo://bar` would yield `foo:`.
         custom: []u8,
 
-        // Either no protocol was speecified or the library couldn't figure
-        // it out.
+        // Either no protocol was speecified or the library couldn't figure it out.
         unknown: void,
     },
 };
 
-/// Given a loose string that may or may not be a valid URL, attempt to
-/// normalize it.
+/// Given a loose string that may or may not be a valid URL, attempt to normalize it.
 ///
 /// This never allocates but requires `npa_str` be stable.
 ///
-/// Returns a struct containing the URL string with the `protocol://` part
-/// removed and a tagged enumeration. If the protocol is known, it is
-/// returned as a UrlProtocol. If the protocol is specified in the URL, it
-/// is given as a slice and if it is not specified, the `unknown` field is
+/// Returns a struct containing the URL string with the `protocol://` part removed and a tagged
+/// enumeration. If the protocol is known, it is returned as a UrlProtocol. If the protocol is
+/// specified in the URL, it is given as a slice and if it is not specified, the `unknown` field is
 /// returned.
 ///
-/// This mirrors the `correctProtocol` function in
-/// `hosted-git-info/parse-url.js`.
+/// This mirrors the `correctProtocol` function in `hosted-git-info/parse-url.js`.
 fn normalizeProtocol(npa_str: []u8) UrlProtocolPair {
     var first_colon_idx: i32 = -1;
     if (bun.strings.indexOfChar(npa_str, ':')) |idx| {
@@ -411,9 +386,8 @@ fn normalizeProtocol(npa_str: []u8) UrlProtocolPair {
     const proto_slice = npa_str[0..@intCast(first_colon_idx + 1)];
 
     if (url_protocol_strings.get(proto_slice)) |url_protocol| {
-        // We need to slice off the protocol from the string. Note there
-        // are two very annoying cases -- one where the protocol string
-        // is foo://bar and one where it is foo:bar.
+        // We need to slice off the protocol from the string. Note there are two very annoying
+        // cases -- one where the protocol string is foo://bar and one where it is foo:bar.
         var post_colon = bun.strings.dropMut(
             npa_str,
             @intCast(first_colon_idx + 1),
@@ -446,11 +420,8 @@ fn normalizeProtocol(npa_str: []u8) UrlProtocolPair {
 
                 // NOTE(markovejnovic): I don't, at this moment, understand how exactly
                 // hosted-git-info and npm-package-arg handle this "unknown" protocol as of now.
-                return .{
-                    .url = npa_str,
-                    // We can't really guess either -- there's no :// which comes before @
-                    .protocol = .unknown,
-                };
+                // We can't really guess either -- there's no :// which comes before @
+                return .{ .url = npa_str, .protocol = .unknown };
             }
         } else {
             // Something like user@host which is also a valid URL. Since no :, that means that the
@@ -465,8 +436,8 @@ fn normalizeProtocol(npa_str: []u8) UrlProtocolPair {
     // NOTE(markovejnovic): I also think this is wrong in parse-url.js.
     // They:
     // 1. Test the protocol against known protocols (which is fine)
-    // 2. Then, if not found, they go through that hoop of checking for @
-    //    and : guessing if it is a git+ssh URL or not
+    // 2. Then, if not found, they go through that hoop of checking for @ and : guessing if it is a
+    //    git+ssh URL or not
     // 3. And finally, they search for ://.
     //
     // The last two steps feel like they should happen in reverse order:
@@ -499,10 +470,7 @@ fn normalizeProtocol(npa_str: []u8) UrlProtocolPair {
     }
 
     // Well we couldn't figure out anything.
-    return .{
-        .url = npa_str,
-        .protocol = .unknown,
-    };
+    return .{ .url = npa_str, .protocol = .unknown };
 }
 
 /// Attempt to correct an scp-style URL into a proper URL, parsable with bun.jsc.URL. Potentially
@@ -539,10 +507,7 @@ fn correctUrlMut(url_proto_pair: UrlProtocolPair) UrlProtocolPair {
     return url_proto_pair;
 }
 
-fn concatPartsToUrl(
-    allocator: std.mem.Allocator,
-    parts: []const []const u8,
-) ?*bun.jsc.URL {
+fn concatPartsToUrl(allocator: std.mem.Allocator, parts: []const []const u8) ?*bun.jsc.URL {
     // TODO(markovejnovic): There is a sad unnecessary allocation here that I don't know how to get
     // rid of -- in theory, URL.zig could allocate once.
     const new_str = bun.handleOom(bun.strings.concat(allocator, parts));
@@ -553,10 +518,7 @@ fn concatPartsToUrl(
 /// Given a protocol pair, create a bun.jsc.URL if possible.
 ///
 /// May allocate, but owns its memory.
-fn tryCreateUrl(
-    allocator: std.mem.Allocator,
-    proto_pair: *const UrlProtocolPair,
-) ?*bun.jsc.URL {
+fn tryCreateUrl(allocator: std.mem.Allocator, proto_pair: *const UrlProtocolPair) ?*bun.jsc.URL {
     // Ehhh.. Old IE's max path length was 2K so let's just use that.
     // I searched for a statistical distribution and found nothing.
     const LONG_URL_THRESH = 2048;
