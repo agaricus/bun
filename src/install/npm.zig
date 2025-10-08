@@ -222,6 +222,11 @@ pub const Registry = struct {
         // username and password combo, `user:pass`
         user: string = "",
 
+        // SSL/TLS authentication files
+        cafile: string = "",
+        certfile: string = "",
+        keyfile: string = "",
+
         pub fn hash(str: string) u64 {
             return String.Builder.stringHash(str);
         }
@@ -297,6 +302,21 @@ pub const Registry = struct {
                                 registry.password = value;
                                 continue;
                             }
+
+                            if (strings.eqlComptime(segment, "cafile")) {
+                                registry.cafile = value;
+                                continue;
+                            }
+
+                            if (strings.eqlComptime(segment, "certfile")) {
+                                registry.certfile = value;
+                                continue;
+                            }
+
+                            if (strings.eqlComptime(segment, "keyfile")) {
+                                registry.keyfile = value;
+                                continue;
+                            }
                         }
 
                         // In this case, there is only one.
@@ -332,6 +352,27 @@ pub const Registry = struct {
 
                                     if (strings.eqlComptime(segment, "_password")) {
                                         registry.password = value;
+                                        pathname = pathname[0 .. last_slash + 1];
+                                        needs_normalize = true;
+                                        break :outer;
+                                    }
+
+                                    if (strings.eqlComptime(segment, "cafile")) {
+                                        registry.cafile = value;
+                                        pathname = pathname[0 .. last_slash + 1];
+                                        needs_normalize = true;
+                                        break :outer;
+                                    }
+
+                                    if (strings.eqlComptime(segment, "certfile")) {
+                                        registry.certfile = value;
+                                        pathname = pathname[0 .. last_slash + 1];
+                                        needs_normalize = true;
+                                        break :outer;
+                                    }
+
+                                    if (strings.eqlComptime(segment, "keyfile")) {
+                                        registry.keyfile = value;
                                         pathname = pathname[0 .. last_slash + 1];
                                         needs_normalize = true;
                                         break :outer;
@@ -378,6 +419,9 @@ pub const Registry = struct {
                 .token = registry.token,
                 .auth = auth,
                 .user = user,
+                .cafile = registry.cafile,
+                .certfile = registry.certfile,
+                .keyfile = registry.keyfile,
             };
         }
     };

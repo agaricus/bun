@@ -556,9 +556,12 @@ pub const IniTestingAPIs = struct {
             return log.toJS(globalThis, allocator, "error");
         };
 
-        const default_registry_url, const default_registry_token, const default_registry_username, const default_registry_password = brk: {
+        const default_registry_url, const default_registry_token, const default_registry_username, const default_registry_password, const default_registry_cafile, const default_registry_certfile, const default_registry_keyfile = brk: {
             const default_registry = install.default_registry orelse break :brk .{
                 bun.String.static(Registry.default_url[0..]),
+                bun.String.empty,
+                bun.String.empty,
+                bun.String.empty,
                 bun.String.empty,
                 bun.String.empty,
                 bun.String.empty,
@@ -569,6 +572,9 @@ pub const IniTestingAPIs = struct {
                 bun.String.fromBytes(default_registry.token),
                 bun.String.fromBytes(default_registry.username),
                 bun.String.fromBytes(default_registry.password),
+                bun.String.fromBytes(default_registry.cafile),
+                bun.String.fromBytes(default_registry.certfile),
+                bun.String.fromBytes(default_registry.keyfile),
             };
         };
         defer {
@@ -576,6 +582,9 @@ pub const IniTestingAPIs = struct {
             default_registry_token.deref();
             default_registry_username.deref();
             default_registry_password.deref();
+            default_registry_cafile.deref();
+            default_registry_certfile.deref();
+            default_registry_keyfile.deref();
         }
 
         return (try jsc.JSObject.create(.{
@@ -583,6 +592,9 @@ pub const IniTestingAPIs = struct {
             .default_registry_token = default_registry_token,
             .default_registry_username = default_registry_username,
             .default_registry_password = default_registry_password,
+            .default_registry_cafile = default_registry_cafile,
+            .default_registry_certfile = default_registry_certfile,
+            .default_registry_keyfile = default_registry_keyfile,
         }, globalThis)).toJS();
     }
 
@@ -673,6 +685,9 @@ pub const ConfigIterator = struct {
             _password,
 
             email,
+
+            /// path to certificate authority file
+            cafile,
 
             /// path to certificate file
             certfile,
@@ -1181,7 +1196,7 @@ pub fn loadNpmrc(
                 // - @myorg:registry=https://somewhere-else.com/myorg
                 const conf_item: bun.ini.ConfigIterator.Item = conf_item_;
                 switch (conf_item.optname) {
-                    .email, .certfile, .keyfile => {
+                    .email => {
                         try log.addWarningFmt(
                             source,
                             iter.config.properties.at(iter.prop_idx - 1).key.?.loc,
@@ -1212,6 +1227,9 @@ pub fn loadNpmrc(
                         .token = "",
                         .username = "",
                         .url = Registry.default_url,
+                        .cafile = "",
+                        .certfile = "",
+                        .keyfile = "",
                     };
                     break :brk &install.default_registry.?;
                 };
@@ -1229,7 +1247,16 @@ pub fn loadNpmrc(
                     ._auth => {
                         try @"handle _auth"(allocator, v, &conf_item, log, source);
                     },
-                    .email, .certfile, .keyfile => unreachable,
+                    .cafile => {
+                        if (try conf_item.dupeValueDecoded(allocator, log, source)) |x| v.cafile = x;
+                    },
+                    .certfile => {
+                        if (try conf_item.dupeValueDecoded(allocator, log, source)) |x| v.certfile = x;
+                    },
+                    .keyfile => {
+                        if (try conf_item.dupeValueDecoded(allocator, log, source)) |x| v.keyfile = x;
+                    },
+                    .email => unreachable,
                 }
             }
 
@@ -1256,7 +1283,16 @@ pub fn loadNpmrc(
                         ._auth => {
                             try @"handle _auth"(allocator, v, &conf_item, log, source);
                         },
-                        .email, .certfile, .keyfile => unreachable,
+                        .cafile => {
+                            if (try conf_item.dupeValueDecoded(allocator, log, source)) |x| v.cafile = x;
+                        },
+                        .certfile => {
+                            if (try conf_item.dupeValueDecoded(allocator, log, source)) |x| v.certfile = x;
+                        },
+                        .keyfile => {
+                            if (try conf_item.dupeValueDecoded(allocator, log, source)) |x| v.keyfile = x;
+                        },
+                        .email => unreachable,
                     }
                     // We have to keep going as it could match multiple scopes
                     continue;

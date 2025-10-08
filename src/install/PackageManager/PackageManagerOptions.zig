@@ -251,6 +251,9 @@ pub fn load(
         .username = "",
         .password = "",
         .token = "",
+        .cafile = "",
+        .certfile = "",
+        .keyfile = "",
     };
     if (bun_install_) |config| {
         if (config.default_registry) |registry| {

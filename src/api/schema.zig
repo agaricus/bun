@@ -2825,14 +2825,26 @@ pub const api = struct {
         /// token
         token: []const u8,
 
+        /// cafile
+        cafile: []const u8,
+
+        /// certfile
+        certfile: []const u8,
+
+        /// keyfile
+        keyfile: []const u8,
+
         pub fn dupe(this: NpmRegistry, allocator: std.mem.Allocator) NpmRegistry {
-            const buf = bun.handleOom(allocator.alloc(u8, this.url.len + this.username.len + this.password.len + this.token.len));
+            const buf = bun.handleOom(allocator.alloc(u8, this.url.len + this.username.len + this.password.len + this.token.len + this.cafile.len + this.certfile.len + this.keyfile.len));
 
             var out: NpmRegistry = .{
                 .url = "",
                 .username = "",
                 .password = "",
                 .token = "",
+                .cafile = "",
+                .certfile = "",
+                .keyfile = "",
             };
 
             var i: usize = 0;
@@ -2853,6 +2865,9 @@ pub const api = struct {
             this.username = try reader.readValue([]const u8);
             this.password = try reader.readValue([]const u8);
             this.token = try reader.readValue([]const u8);
+            this.cafile = try reader.readValue([]const u8);
+            this.certfile = try reader.readValue([]const u8);
+            this.keyfile = try reader.readValue([]const u8);
             return this;
         }
 
@@ -2861,6 +2876,9 @@ pub const api = struct {
             try writer.writeValue(@TypeOf(this.username), this.username);
             try writer.writeValue(@TypeOf(this.password), this.password);
             try writer.writeValue(@TypeOf(this.token), this.token);
+            try writer.writeValue(@TypeOf(this.cafile), this.cafile);
+            try writer.writeValue(@TypeOf(this.certfile), this.certfile);
+            try writer.writeValue(@TypeOf(this.keyfile), this.keyfile);
         }
 
         pub const Parser = struct {
@@ -2893,15 +2911,55 @@ pub const api = struct {
                 const url = bun.URL.parse(str);
                 var registry = std.mem.zeroes(api.NpmRegistry);
 
-                // Token
-                if (url.username.len == 0 and url.password.len > 0) {
-                    registry.token = url.password;
-                    registry.url = try std.fmt.allocPrint(this.allocator, "{s}://{}/{s}/", .{ url.displayProtocol(), url.displayHost(), std.mem.trim(u8, url.pathname, "/") });
-                } else if (url.username.len > 0 and url.password.len > 0) {
-                    registry.username = url.username;
-                    registry.password = url.password;
+                // Parse pathname for auth-related parameters
+                var pathname_parts = try std.ArrayList([]const u8).initCapacity(this.allocator, 4);
+                defer pathname_parts.deinit();
 
-                    registry.url = try std.fmt.allocPrint(this.allocator, "{s}://{}/{s}/", .{ url.displayProtocol(), url.displayHost(), std.mem.trim(u8, url.pathname, "/") });
+                // Split pathname by '/' and process each segment
+                var path_iter = std.mem.splitAny(u8, url.pathname, "/");
+                while (path_iter.next()) |segment| {
+                    if (segment.len == 0) continue;
+
+                    if (std.mem.startsWith(u8, segment, ":keyfile=")) {
+                        registry.keyfile = try this.allocator.dupe(u8, segment[9..]);
+                    } else if (std.mem.startsWith(u8, segment, ":certfile=")) {
+                        registry.certfile = try this.allocator.dupe(u8, segment[10..]);
+                    } else if (std.mem.startsWith(u8, segment, ":cafile=")) {
+                        registry.cafile = try this.allocator.dupe(u8, segment[8..]);
+                    } else {
+                        // Keep non-parameter segments
+                        try pathname_parts.append(segment);
+                    }
+                }
+
+                // Reconstruct clean pathname
+                const final_pathname = if (pathname_parts.items.len > 0) blk: {
+                    var result = try std.ArrayList(u8).initCapacity(this.allocator, url.pathname.len);
+                    defer result.deinit();
+
+                    try result.append('/');
+                    for (pathname_parts.items, 0..) |part, i| {
+                        if (i > 0) try result.append('/');
+                        try result.appendSlice(part);
+                    }
+
+                    break :blk try this.allocator.dupe(u8, result.items);
+                } else try this.allocator.dupe(u8, "/");
+
+                // Check if we need to reconstruct the URL (either has credentials or has parameters that were parsed)
+                const has_credentials = (url.username.len > 0 and url.password.len > 0) or (url.username.len == 0 and url.password.len > 0);
+                const has_parsed_params = registry.keyfile.len > 0 or registry.certfile.len > 0 or registry.cafile.len > 0;
+
+                if (has_credentials or has_parsed_params) {
+                    // Token
+                    if (url.username.len == 0 and url.password.len > 0) {
+                        registry.token = url.password;
+                    } else if (url.username.len > 0 and url.password.len > 0) {
+                        registry.username = url.username;
+                        registry.password = url.password;
+                    }
+
+                    registry.url = try std.fmt.allocPrint(this.allocator, "{s}://{}/{s}", .{ url.displayProtocol(), url.displayHost(), std.mem.trim(u8, final_pathname, "/") });
                 } else {
                     // Do not include a trailing slash. There might be parameters at the end.
                     registry.url = url.href;
@@ -2933,6 +2991,21 @@ pub const api = struct {
                 if (obj.get("token")) |token| {
                     try this.expectString(token);
                     registry.token = token.asString(this.allocator).?;
+                }
+
+                if (obj.get("cafile")) |cafile| {
+                    try this.expectString(cafile);
+                    registry.cafile = cafile.asString(this.allocator).?;
+                }
+
+                if (obj.get("certfile")) |certfile| {
+                    try this.expectString(certfile);
+                    registry.certfile = certfile.asString(this.allocator).?;
+                }
+
+                if (obj.get("keyfile")) |keyfile| {
+                    try this.expectString(keyfile);
+                    registry.keyfile = keyfile.asString(this.allocator).?;
                 }
 
                 return registry;

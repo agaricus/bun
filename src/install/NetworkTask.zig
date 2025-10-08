@@ -77,6 +77,74 @@ const ForManifestError = OOM || error{
     InvalidURL,
 };
 
+fn validateURL(url_str: string, allocator: std.mem.Allocator, log: *logger.Log, is_optional: bool, package_name: ?string) (OOM || error{InvalidURL})!void {
+    if (!(strings.hasPrefixComptime(url_str, "https://") or strings.hasPrefixComptime(url_str, "http://"))) {
+        if (package_name) |pkg_name| {
+            // Tarball-specific error message
+            const msg = .{
+                .fmt = "Expected tarball URL to start with https:// or http://, got {} while fetching package {}",
+                .args = .{ bun.fmt.QuotedFormatter{ .text = url_str }, bun.fmt.QuotedFormatter{ .text = pkg_name } },
+            };
+            try log.addErrorFmt(null, logger.Loc.Empty, allocator, msg.fmt, msg.args);
+        } else {
+            // Default manifest error message
+            const msg = .{
+                .fmt = "URL must be http:// or https://\nReceived: \"{}\"",
+                .args = .{bun.fmt.QuotedFormatter{ .text = url_str }},
+            };
+            if (!is_optional) {
+                try log.addErrorFmt(null, logger.Loc.Empty, allocator, msg.fmt, msg.args);
+            } else {
+                try log.addWarningFmt(null, logger.Loc.Empty, allocator, msg.fmt, msg.args);
+            }
+        }
+        return error.InvalidURL;
+    }
+}
+
+fn dupZPtr(allocator: std.mem.Allocator, str: string) OOM!?[*:0]const u8 {
+    return try allocator.dupeZ(u8, str);
+}
+
+fn dupFileNameIfNotEmpty(allocator: std.mem.Allocator, filename: string) OOM!?[*:0]const u8 {
+    return if (filename.len > 0) try dupZPtr(allocator, filename) else null;
+}
+
+fn createTLSConfig(allocator: std.mem.Allocator, scope: *const Npm.Registry.Scope) OOM!?*SSLConfig {
+    if (scope.cafile.len > 0 or scope.certfile.len > 0 or scope.keyfile.len > 0) {
+        const tls_props = bun.handleOom(allocator.create(SSLConfig));
+        tls_props.* = SSLConfig{
+            .requires_custom_request_ctx = true,
+            .server_name = try dupZPtr(allocator, scope.url.hostname), // Enable SNI for SSL context caching
+            .ca_file_name = try dupFileNameIfNotEmpty(allocator, scope.cafile),
+            .cert_file_name = try dupFileNameIfNotEmpty(allocator, scope.certfile),
+            .key_file_name = try dupFileNameIfNotEmpty(allocator, scope.keyfile),
+        };
+        return tls_props;
+    }
+    return null;
+}
+
+fn initHTTPClient(
+    this: *NetworkTask,
+    allocator: std.mem.Allocator,
+    url: URL,
+    header_builder: HeaderBuilder,
+    tls_props: ?*SSLConfig,
+) void {
+    const header_buf = if (header_builder.content.len > 0) header_builder.content.ptr.?[0..header_builder.content.len] else "";
+    this.unsafe_http_client = AsyncHTTP.init(allocator, .GET, url, header_builder.entries, header_buf, &this.response_buffer, "", this.getCompletionCallback(), HTTP.FetchRedirect.follow, .{
+        .http_proxy = this.package_manager.httpProxy(url),
+        .tls_props = tls_props,
+    });
+    this.unsafe_http_client.client.flags.reject_unauthorized = this.package_manager.tlsRejectUnauthorized();
+
+    if (PackageManager.verbose_install) {
+        this.unsafe_http_client.client.verbose = .headers;
+        this.unsafe_http_client.verbose = .headers;
+    }
+}
+
 pub fn forManifest(
     this: *NetworkTask,
     name: string,
@@ -127,26 +195,9 @@ pub fn forManifest(
             return error.InvalidURL;
         }
 
-        if (!(tmp.hasPrefixComptime("https://") or tmp.hasPrefixComptime("http://"))) {
-            if (!is_optional) {
-                this.package_manager.log.addErrorFmt(
-                    null,
-                    logger.Loc.Empty,
-                    allocator,
-                    "Registry URL must be http:// or https://\nReceived: \"{}\"",
-                    .{tmp},
-                ) catch |err| bun.handleOom(err);
-            } else {
-                this.package_manager.log.addWarningFmt(
-                    null,
-                    logger.Loc.Empty,
-                    allocator,
-                    "Registry URL must be http:// or https://\nReceived: \"{}\"",
-                    .{tmp},
-                ) catch |err| bun.handleOom(err);
-            }
-            return error.InvalidURL;
-        }
+        const url_utf8 = tmp.toUTF8(bun.default_allocator);
+        try validateURL(url_utf8.ptr[0..url_utf8.len], allocator, this.package_manager.log, is_optional, null);
+        defer tmp.deref();
 
         // This actually duplicates the string! So we defer deref the WTF managed one above.
         break :blk try tmp.toOwnedSlice(allocator);
@@ -211,14 +262,8 @@ pub fn forManifest(
     this.allocator = allocator;
 
     const url = URL.parse(this.url_buf);
-    this.unsafe_http_client = AsyncHTTP.init(allocator, .GET, url, header_builder.entries, header_builder.content.ptr.?[0..header_builder.content.len], &this.response_buffer, "", this.getCompletionCallback(), HTTP.FetchRedirect.follow, .{
-        .http_proxy = this.package_manager.httpProxy(url),
-    });
-    this.unsafe_http_client.client.flags.reject_unauthorized = this.package_manager.tlsRejectUnauthorized();
-
-    if (PackageManager.verbose_install) {
-        this.unsafe_http_client.client.verbose = .headers;
-    }
+    const tls_props = try createTLSConfig(allocator, scope);
+    initHTTPClient(this, allocator, url, header_builder, tls_props);
 
     this.callback = .{
         .package_manifest = .{
@@ -227,11 +272,6 @@ pub fn forManifest(
             .is_extended_manifest = needs_extended,
         },
     };
-
-    if (PackageManager.verbose_install) {
-        this.unsafe_http_client.verbose = .headers;
-        this.unsafe_http_client.client.verbose = .headers;
-    }
 
     // Incase the ETag causes invalidation, we fallback to the last modified date.
     if (last_modified.len != 0 and bun.getRuntimeFeatureFlag(.BUN_FEATURE_FLAG_LAST_MODIFIED_PRETEND_304)) {
@@ -273,21 +313,12 @@ pub fn forTarball(
         this.url_buf = tarball_url;
     }
 
-    if (!(strings.hasPrefixComptime(this.url_buf, "https://") or strings.hasPrefixComptime(this.url_buf, "http://"))) {
-        const msg = .{
-            .fmt = "Expected tarball URL to start with https:// or http://, got {} while fetching package {}",
-            .args = .{ bun.fmt.QuotedFormatter{ .text = this.url_buf }, bun.fmt.QuotedFormatter{ .text = tarball.name.slice() } },
-        };
-
-        try this.package_manager.log.addErrorFmt(null, .{}, allocator, msg.fmt, msg.args);
-        return error.InvalidURL;
-    }
+    try validateURL(this.url_buf, allocator, this.package_manager.log, false, tarball.name.slice());
 
     this.response_buffer = MutableString.initEmpty(allocator);
     this.allocator = allocator;
 
     var header_builder = HeaderBuilder{};
-    var header_buf: string = "";
 
     if (authorization == .allow_authorization) {
         countAuth(&header_builder, scope);
@@ -299,19 +330,12 @@ pub fn forTarball(
         if (authorization == .allow_authorization) {
             appendAuth(&header_builder, scope);
         }
-
-        header_buf = header_builder.content.ptr.?[0..header_builder.content.len];
     }
 
     const url = URL.parse(this.url_buf);
+    const tls_props = try createTLSConfig(allocator, scope);
 
-    this.unsafe_http_client = AsyncHTTP.init(allocator, .GET, url, header_builder.entries, header_buf, &this.response_buffer, "", this.getCompletionCallback(), HTTP.FetchRedirect.follow, .{
-        .http_proxy = this.package_manager.httpProxy(url),
-    });
-    this.unsafe_http_client.client.flags.reject_unauthorized = this.package_manager.tlsRejectUnauthorized();
-    if (PackageManager.verbose_install) {
-        this.unsafe_http_client.client.verbose = .headers;
-    }
+    initHTTPClient(this, allocator, url, header_builder, tls_props);
 }
 
 const string = []const u8;
@@ -342,3 +366,4 @@ const FileSystem = Fs.FileSystem;
 const HTTP = bun.http;
 const AsyncHTTP = HTTP.AsyncHTTP;
 const HeaderBuilder = HTTP.HeaderBuilder;
+const SSLConfig = bun.api.server.ServerConfig.SSLConfig;

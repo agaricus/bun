@@ -116,6 +116,10 @@ const Preconnect = struct {
         this.response_buffer.deinit();
         this.async_http.clearData();
         this.async_http.client.deinit();
+        if (this.async_http.client.tls_props) |tls_props| {
+            tls_props.deinit();
+            bun.default_allocator.destroy(tls_props);
+        }
         if (this.is_url_owned) {
             bun.default_allocator.free(this.url.href);
         }

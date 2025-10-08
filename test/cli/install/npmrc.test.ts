@@ -233,6 +233,9 @@ registry=http://localhost:\${PORT}/
       default_registry_token: string;
       default_registry_username: string;
       default_registry_password: string;
+      default_registry_cafile: string;
+      default_registry_certfile: string;
+      default_registry_keyfile: string;
     }) => void,
   ) {
     const optionName = await Promise.all(options.map(async ([name, val]) => `${name} = ${val}`));
@@ -286,6 +289,21 @@ ${iniInner.join("\n")}
       expect(result.default_registry_password).toEqual("skibidi");
     },
   );
+
+  await makeTest([["cafile", "/path/to/ca.pem"]], result => {
+    expect(result.default_registry_url).toEqual("https://registry.npmjs.org/");
+    expect(result.default_registry_cafile).toEqual("/path/to/ca.pem");
+  });
+
+  await makeTest([["certfile", "/path/to/cert.crt"]], result => {
+    expect(result.default_registry_url).toEqual("https://registry.npmjs.org/");
+    expect(result.default_registry_certfile).toEqual("/path/to/cert.crt");
+  });
+
+  await makeTest([["keyfile", "/path/to/key.pem"]], result => {
+    expect(result.default_registry_url).toEqual("https://registry.npmjs.org/");
+    expect(result.default_registry_keyfile).toEqual("/path/to/key.pem");
+  });
 
   it("authentication works", async () => {
     const { packageDir, packageJson } = await registry.createTestDir();

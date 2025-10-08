@@ -88,6 +88,21 @@ pub const Bunfig = struct {
                 registry.token = token.asString(this.allocator).?;
             }
 
+            if (obj.get("cafile")) |cafile| {
+                try this.expectString(cafile);
+                registry.cafile = cafile.asString(this.allocator).?;
+            }
+
+            if (obj.get("certfile")) |certfile| {
+                try this.expectString(certfile);
+                registry.certfile = certfile.asString(this.allocator).?;
+            }
+
+            if (obj.get("keyfile")) |keyfile| {
+                try this.expectString(keyfile);
+                registry.keyfile = keyfile.asString(this.allocator).?;
+            }
+
             return registry;
         }
 
