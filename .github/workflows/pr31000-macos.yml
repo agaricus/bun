@@ -41,6 +41,11 @@ jobs:
       - name: Install NASM
         run: brew install nasm
 
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select --switch "$XCODE_26_DEVELOPER_DIR"
+          xcodebuild -version
+
       - name: Record runner and revision
         working-directory: bun
         run: |
