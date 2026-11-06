@@ -117,7 +117,7 @@ jobs:
           echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/llvm23/bin" >> "$GITHUB_PATH"
           sudo apt-get update
-          sudo apt-get install -y nasm
+          sudo apt-get install -y nasm g++
 
       - name: Build debug Bun and run focused suites
         working-directory: bun
@@ -163,14 +163,15 @@ jobs:
           "BUN_TOOLCHAIN_LLVM=$installDir" >> $env:GITHUB_ENV
           "$installDir\bin" >> $env:GITHUB_PATH
           choco install nasm -y --no-progress
-          $nasm = Get-Command nasm.exe -ErrorAction SilentlyContinue
-          if (!$nasm) {
-            $nasmDir = 'C:\ProgramData\chocolatey\bin'
-            if (!(Test-Path (Join-Path $nasmDir 'nasm.exe'))) { throw 'nasm.exe was not installed by Chocolatey' }
-          } else {
-            $nasmDir = Split-Path $nasm.Source
-          }
-          & (Join-Path $nasmDir 'nasm.exe') -v
+          $nasmCandidates = @(
+            (Join-Path $env:ProgramFiles 'NASM\nasm.exe'),
+            'C:\ProgramData\chocolatey\lib\nasm\tools\nasm.exe',
+            'C:\ProgramData\chocolatey\bin\nasm.exe'
+          )
+          $nasmExe = $nasmCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (!$nasmExe) { throw 'nasm.exe was installed but not found in expected Chocolatey locations' }
+          $nasmDir = Split-Path $nasmExe
+          & $nasmExe -v
           "$nasmDir" >> $env:GITHUB_PATH
 
       - name: Build debug Bun and run focused suites
