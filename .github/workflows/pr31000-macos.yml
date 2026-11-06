@@ -150,8 +150,41 @@ jobs:
           path: linux-test.log
           if-no-files-found: ignore
 
+  windows-build:
+    if: ${{ !inputs.skip_windows }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Bun revision
+        uses: actions/checkout@v4
+        with:
+          repository: oven-sh/bun
+          ref: ${{ inputs.bun_sha }}
+          path: bun
+      - name: Set up bootstrap Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install LLVM 23 and native build tools
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo "$RUNNER_TEMP/llvm.sh" 23
+          sudo apt-get update
+          sudo apt-get install -y clang-23 lld-23 llvm-23-dev nasm g++
+          echo "BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-23" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
+      - name: Cross-build Windows x64 release binary
+        working-directory: bun
+        run: bun run build --profile=windows-x64-release --ci=on --target=bun.exe
+      - name: Upload Windows binary for native tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-windows-x64-build
+          path: bun/build/release-windows-x64/bun.exe
+          if-no-files-found: error
+
   windows-x64:
     if: ${{ !inputs.skip_windows }}
+    needs: [windows-build]
     runs-on: windows-2022
     timeout-minutes: 180
     steps:
@@ -161,51 +194,25 @@ jobs:
           repository: oven-sh/bun
           ref: ${{ inputs.bun_sha }}
           path: bun
-
-      - name: Set up bootstrap Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install LLVM 23.1.1 and NASM
-        shell: pwsh
-        run: |
-          $msi = Join-Path $env:RUNNER_TEMP 'LLVM-23.1.1-win64.msi'
-          $url = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.1/LLVM-23.1.1-win64.msi'
-          Invoke-WebRequest -Uri $url -OutFile $msi
-          $proc = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/qn', '/norestart') -Wait -PassThru
-          if ($proc.ExitCode -ne 0) { throw "LLVM MSI exited with $($proc.ExitCode)" }
-          $installDir = Join-Path $env:ProgramFiles 'LLVM'
-          if (!(Test-Path (Join-Path $installDir 'bin\clang-cl.exe'))) { throw "clang-cl.exe missing from $installDir" }
-          & (Join-Path $installDir 'bin\clang-cl.exe') --version
-          "BUN_TOOLCHAIN_LLVM=$installDir" >> $env:GITHUB_ENV
-          "$installDir\bin" >> $env:GITHUB_PATH
-          choco install nasm -y --no-progress
-          $nasmCandidates = @(
-            (Join-Path $env:ProgramFiles 'NASM\nasm.exe'),
-            'C:\ProgramData\chocolatey\lib\nasm\tools\nasm.exe',
-            'C:\ProgramData\chocolatey\bin\nasm.exe'
-          )
-          $nasmExe = $nasmCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (!$nasmExe) { throw 'nasm.exe was installed but not found in expected Chocolatey locations' }
-          $nasmDir = Split-Path $nasmExe
-          & $nasmExe -v
-          "$nasmDir" >> $env:GITHUB_PATH
-
-      - name: Build debug Bun and run focused suites
+      - name: Download cross-built Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-windows-x64-build
+          path: bun/build/release-windows-x64
+      - name: Run focused suites with the cross-built Windows binary
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           subst B: "$env:GITHUB_WORKSPACE\bun"
           Set-Location 'B:\'
-          pwsh -NoProfile -File .\scripts\vs-shell.ps1 bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath ../windows-test.log
+          & .\build\release-windows-x64\bun.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Upload tested windows-x64 binary
+      - name: Upload tested Windows binary
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-debug
-          path: bun/build/debug/bun-debug.exe
+          path: bun/build/release-windows-x64/bun.exe
           if-no-files-found: error
-
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -244,9 +251,10 @@ jobs:
           root = pathlib.Path('release-inputs')
           out = pathlib.Path('release-assets')
           out.mkdir()
-          version = f"1.4.4-pr31000-{__import__('os').environ['BUN_SHA'][:11]}-debug"
+          version = f"1.4.4-pr31000-{__import__('os').environ['BUN_SHA'][:11]}"
           for target, exe_name in [('darwin-x64', 'bun'), ('windows-x64', 'bun.exe'), ('linux-x64', 'bun')]:
-              files = list((root / target).glob('bun-debug*'))
+              pattern = 'bun.exe' if target == 'windows-x64' else 'bun-debug'
+              files = list((root / target).glob(pattern))
               if len(files) != 1:
                   raise SystemExit(f'{target}: expected one tested bun-debug binary, found {files}')
               binary = files[0]
@@ -256,7 +264,7 @@ jobs:
               exe.write_bytes(binary.read_bytes())
               exe.chmod(0o755)
               digest = hashlib.sha256(exe.read_bytes()).hexdigest()
-              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'debug', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
+              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'windows-x64-release' if target == 'windows-x64' else 'debug', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
               (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
               (dest / 'README.txt').write_text('Temporary debug binary built and tested in the PR 31000 fork workflow. Not an official Bun release.\n')
               zip_path = out / f'bun-{target}-{version}.zip'
