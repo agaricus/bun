@@ -38,6 +38,9 @@ jobs:
           micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1
           echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
 
+      - name: Install NASM
+        run: brew install nasm
+
       - name: Record runner and revision
         working-directory: bun
         run: |
