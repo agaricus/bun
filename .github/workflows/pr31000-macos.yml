@@ -8,12 +8,18 @@ on:
         required: true
         type: string
         default: 056352c391c0d6b476bace1f41874dc9b4d9c5d9
+      skip_macos:
+        description: Skip macOS when rerunning only failed Windows/Linux lanes
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   macos-x64:
+    if: ${{ !inputs.skip_macos }}
     runs-on: macos-15-intel
     timeout-minutes: 180
     steps:
@@ -96,7 +102,7 @@ jobs:
       - name: Install LLVM 23.1.1 and NASM
         shell: bash -el {0}
         run: |
-          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1 nasm
+          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 llvm-tools=23.1.1 clang=23.1.1 nasm
           echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
 
       - name: Build debug Bun and run focused suites
@@ -136,7 +142,7 @@ jobs:
       - name: Install LLVM 23.1.1 and NASM
         shell: bash -el {0}
         run: |
-          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1 nasm
+          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 llvm-tools=23.1.1 clang=23.1.1 clang_win-64=23.1.1 clangxx_win-64=23.1.1 nasm
           echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
 
       - name: Build debug Bun and run focused suites
