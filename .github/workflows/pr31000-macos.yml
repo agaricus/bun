@@ -27,8 +27,11 @@ jobs:
       - name: Set up bootstrap Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install LLVM 23
-        run: brew install llvm
+      - name: Install LLVM 23.1.1.1.1
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          init-shell: bash
+        run: micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1 && echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
 
       - name: Record runner and revision
         working-directory: bun
