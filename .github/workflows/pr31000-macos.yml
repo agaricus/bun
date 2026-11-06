@@ -28,7 +28,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install LLVM 23
-        run: brew install llvm@23
+        run: brew install llvm
 
       - name: Record runner and revision
         working-directory: bun
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          BUN_TOOLCHAIN_LLVM="$(brew --prefix llvm@23)" bun bd test \
+          BUN_TOOLCHAIN_LLVM="$(brew --prefix llvm)" bun bd test \
             test/cli/install/npmrc.test.ts \
             test/js/web/fetch/fetch.tls.test.ts \
             test/js/web/fetch/fetch-redirect.test.ts \
