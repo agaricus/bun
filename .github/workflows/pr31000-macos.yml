@@ -86,21 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-macos-x64-debug
-          path: bun/build/debug/bun-debug*
-          if-no-files-found: error
-
-      - name: Upload tested linux-x64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr31000-linux-x64-debug
-          path: bun/build/debug/bun-debug*
-          if-no-files-found: error
-
-      - name: Upload tested windows-x64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr31000-windows-x64-debug
-          path: bun/build/debug/bun-debug*
+          path: bun/build/debug/bun-debug
           if-no-files-found: error
 
       - name: Upload test log
@@ -146,6 +132,13 @@ jobs:
         run: |
           set -o pipefail
           bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
+
+      - name: Upload tested linux-x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          path: bun/build/debug/bun-debug
+          if-no-files-found: error
 
       - name: Upload test log
         if: always()
@@ -202,6 +195,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           pwsh -NoProfile -File .\scripts\vs-shell.ps1 bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath ../windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload tested windows-x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-windows-x64-debug
+          path: bun/build/debug/bun-debug.exe
+          if-no-files-found: error
 
       - name: Upload test log
         if: always()
