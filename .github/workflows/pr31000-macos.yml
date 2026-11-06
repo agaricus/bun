@@ -27,11 +27,16 @@ jobs:
       - name: Set up bootstrap Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install LLVM 23.1.1.1.1
+      - name: Set up micromamba
         uses: mamba-org/setup-micromamba@v2
         with:
           init-shell: bash
-        run: micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1 && echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
+
+      - name: Install LLVM 23.1.1
+        shell: bash -el {0}
+        run: |
+          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1
+          echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
 
       - name: Record runner and revision
         working-directory: bun
@@ -45,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          BUN_TOOLCHAIN_LLVM="$(brew --prefix llvm)" bun bd test \
+          bun bd test \
             test/cli/install/npmrc.test.ts \
             test/js/web/fetch/fetch.tls.test.ts \
             test/js/web/fetch/fetch-redirect.test.ts \
