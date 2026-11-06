@@ -107,8 +107,11 @@ jobs:
       - name: Install LLVM 23.1.1 and NASM
         shell: bash -el {0}
         run: |
-          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 llvm-tools=23.1.1 lld=23.1.1 clang=23.1.1 nasm
+          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 llvm-tools=23.1.1 lld=23.1.1 clang=23.1.1
           echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/llvm23/bin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y nasm
 
       - name: Build debug Bun and run focused suites
         working-directory: bun
@@ -140,16 +143,18 @@ jobs:
       - name: Set up bootstrap Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Set up micromamba
-        uses: mamba-org/setup-micromamba@v2
-        with:
-          init-shell: bash
-
       - name: Install LLVM 23.1.1 and NASM
-        shell: bash -el {0}
+        shell: pwsh
         run: |
-          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 llvm-tools=23.1.1 lld=23.1.1 clang=23.1.1 clang_win-64 clangxx_win-64 nasm
-          echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
+          $msi = Join-Path $env:RUNNER_TEMP 'LLVM-23.1.1-win64.msi'
+          $url = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.1/LLVM-23.1.1-win64.msi'
+          Invoke-WebRequest -Uri $url -OutFile $msi
+          $installDir = Join-Path $env:RUNNER_TEMP 'llvm23'
+          $proc = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/qn', '/norestart', "INSTALLDIR=$installDir") -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "LLVM MSI exited with $($proc.ExitCode)" }
+          "BUN_TOOLCHAIN_LLVM=$installDir" >> $env:GITHUB_ENV
+          "$installDir\bin" >> $env:GITHUB_PATH
+          choco install nasm -y --no-progress
 
       - name: Build debug Bun and run focused suites
         working-directory: bun
