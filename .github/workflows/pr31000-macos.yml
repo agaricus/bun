@@ -82,6 +82,27 @@ jobs:
             test/cli/install/bun-install-retry.test.ts \
             test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../macos-test.log
 
+      - name: Upload tested macos-x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-macos-x64-debug
+          path: bun/build/debug/bun-debug*
+          if-no-files-found: error
+
+      - name: Upload tested linux-x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          path: bun/build/debug/bun-debug*
+          if-no-files-found: error
+
+      - name: Upload tested windows-x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-windows-x64-debug
+          path: bun/build/debug/bun-debug*
+          if-no-files-found: error
+
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -189,3 +210,69 @@ jobs:
           name: pr31000-windows-x64-${{ inputs.bun_sha }}
           path: windows-test.log
           if-no-files-found: ignore
+
+  publish-prerelease:
+    if: ${{ !inputs.skip_macos && !inputs.skip_windows && !inputs.skip_linux }}
+    needs: [macos-x64, windows-x64, linux-x64]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested platform binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-macos-x64-debug
+          path: release-inputs/darwin-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr31000-windows-x64-debug
+          path: release-inputs/windows-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          path: release-inputs/linux-x64
+
+      - name: Package Maven JARs and ZIPs from tested binaries
+        env:
+          BUN_SHA: ${{ inputs.bun_sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, zipfile
+          root = pathlib.Path('release-inputs')
+          out = pathlib.Path('release-assets')
+          out.mkdir()
+          version = f"1.4.4-pr31000-{__import__('os').environ['BUN_SHA'][:11]}-debug"
+          for target, exe_name in [('darwin-x64', 'bun'), ('windows-x64', 'bun.exe'), ('linux-x64', 'bun')]:
+              files = list((root / target).glob('bun-debug*'))
+              if len(files) != 1:
+                  raise SystemExit(f'{target}: expected one tested bun-debug binary, found {files}')
+              binary = files[0]
+              dest = out / f'bun-{target}-{version}'
+              dest.mkdir()
+              exe = dest / exe_name
+              exe.write_bytes(binary.read_bytes())
+              exe.chmod(0o755)
+              digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'debug', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
+              (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+              (dest / 'README.txt').write_text('Temporary debug binary built and tested in the PR 31000 fork workflow. Not an official Bun release.\n')
+              zip_path = out / f'bun-{target}-{version}.zip'
+              with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+                  z.write(exe, exe_name)
+                  z.write(dest / 'manifest.json', 'manifest.json')
+                  z.write(dest / 'README.txt', 'README.txt')
+              jar_path = out / f'bun-{target}-{version}.jar'
+              with zipfile.ZipFile(jar_path, 'w', zipfile.ZIP_DEFLATED) as z:
+                  z.write(exe, f'META-INF/resources/_static/pr31000/{version}/bin/{exe_name}')
+                  z.write(dest / 'manifest.json', 'META-INF/pr31000-build.json')
+                  z.write(dest / 'README.txt', 'META-INF/README.txt')
+          sums = []
+          for path in sorted(out.iterdir()):
+              if path.is_file(): sums.append(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}')
+          (out / 'SHA256SUMS').write_text('\n'.join(sums) + '\n')
+          PY
+
+      - name: Upload assets to temporary prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload pr31000-056352c391c --repo agaricus/bun release-assets/* --clobber
