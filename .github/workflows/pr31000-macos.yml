@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   macos-arm64:
-    runs-on: macos-14
+    runs-on: macos-15-intel
     timeout-minutes: 180
     steps:
       - name: Checkout Bun revision
