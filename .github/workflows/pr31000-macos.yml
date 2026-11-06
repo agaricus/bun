@@ -117,14 +117,16 @@ jobs:
         with:
           init-shell: bash
 
-      - name: Install LLVM 23.1.1 and NASM
-        shell: bash -el {0}
+      - name: Install LLVM 23 and native build tools
+        shell: bash
         run: |
-          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 llvm-tools=23.1.1 lld=23.1.1 clang=23.1.1
-          echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/llvm23/bin" >> "$GITHUB_PATH"
+          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo "$RUNNER_TEMP/llvm.sh" 23
           sudo apt-get update
-          sudo apt-get install -y nasm g++
+          sudo apt-get install -y clang-23 lld-23 llvm-23-dev nasm g++
+          echo "BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-23" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
 
       - name: Build debug Bun and run focused suites
         working-directory: bun
@@ -189,10 +191,11 @@ jobs:
           "$nasmDir" >> $env:GITHUB_PATH
 
       - name: Build debug Bun and run focused suites
-        working-directory: bun
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          subst B: "$env:GITHUB_WORKSPACE\bun"
+          Set-Location 'B:\'
           pwsh -NoProfile -File .\scripts\vs-shell.ps1 bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath ../windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
