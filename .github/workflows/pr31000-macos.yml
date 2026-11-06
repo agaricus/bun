@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_linux:
+        description: Skip Linux when rerunning selected lanes
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,6 +91,7 @@ jobs:
           if-no-files-found: ignore
 
   linux-x64:
+    if: ${{ !inputs.skip_linux }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -149,9 +155,11 @@ jobs:
           $msi = Join-Path $env:RUNNER_TEMP 'LLVM-23.1.1-win64.msi'
           $url = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.1/LLVM-23.1.1-win64.msi'
           Invoke-WebRequest -Uri $url -OutFile $msi
-          $installDir = Join-Path $env:RUNNER_TEMP 'llvm23'
-          $proc = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/qn', '/norestart', "INSTALLDIR=$installDir") -Wait -PassThru
+          $proc = Start-Process msiexec.exe -ArgumentList @('/i', $msi, '/qn', '/norestart') -Wait -PassThru
           if ($proc.ExitCode -ne 0) { throw "LLVM MSI exited with $($proc.ExitCode)" }
+          $installDir = Join-Path $env:ProgramFiles 'LLVM'
+          if (!(Test-Path (Join-Path $installDir 'bin\clang-cl.exe'))) { throw "clang-cl.exe missing from $installDir" }
+          & (Join-Path $installDir 'bin\clang-cl.exe') --version
           "BUN_TOOLCHAIN_LLVM=$installDir" >> $env:GITHUB_ENV
           "$installDir\bin" >> $env:GITHUB_PATH
           choco install nasm -y --no-progress
