@@ -163,6 +163,15 @@ jobs:
           "BUN_TOOLCHAIN_LLVM=$installDir" >> $env:GITHUB_ENV
           "$installDir\bin" >> $env:GITHUB_PATH
           choco install nasm -y --no-progress
+          $nasm = Get-Command nasm.exe -ErrorAction SilentlyContinue
+          if (!$nasm) {
+            $nasmDir = 'C:\ProgramData\chocolatey\bin'
+            if (!(Test-Path (Join-Path $nasmDir 'nasm.exe'))) { throw 'nasm.exe was not installed by Chocolatey' }
+          } else {
+            $nasmDir = Split-Path $nasm.Source
+          }
+          & (Join-Path $nasmDir 'nasm.exe') -v
+          "$nasmDir" >> $env:GITHUB_PATH
 
       - name: Build debug Bun and run focused suites
         working-directory: bun
