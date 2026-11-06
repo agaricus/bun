@@ -1,4 +1,4 @@
-name: PR 31000 macOS verification
+name: PR 31000 cross-platform verification
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  macos-arm64:
+  macos-x64:
     runs-on: macos-15-intel
     timeout-minutes: 180
     steps:
@@ -70,6 +70,87 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr31000-macos-${{ inputs.bun_sha }}
+          name: pr31000-macos-x64-${{ inputs.bun_sha }}
           path: macos-test.log
+          if-no-files-found: ignore
+
+  linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Bun revision
+        uses: actions/checkout@v4
+        with:
+          repository: oven-sh/bun
+          ref: ${{ inputs.bun_sha }}
+          path: bun
+
+      - name: Set up bootstrap Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          init-shell: bash
+
+      - name: Install LLVM 23.1.1 and NASM
+        shell: bash -el {0}
+        run: |
+          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1 nasm
+          echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
+
+      - name: Build debug Bun and run focused suites
+        working-directory: bun
+        shell: bash
+        run: |
+          set -o pipefail
+          bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-linux-x64-${{ inputs.bun_sha }}
+          path: linux-test.log
+          if-no-files-found: ignore
+
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Bun revision
+        uses: actions/checkout@v4
+        with:
+          repository: oven-sh/bun
+          ref: ${{ inputs.bun_sha }}
+          path: bun
+
+      - name: Set up bootstrap Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          init-shell: bash
+
+      - name: Install LLVM 23.1.1 and NASM
+        shell: bash -el {0}
+        run: |
+          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1 nasm
+          echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
+
+      - name: Build debug Bun and run focused suites
+        working-directory: bun
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoProfile -File .\scripts\vs-shell.ps1 bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath ../windows-test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-windows-x64-${{ inputs.bun_sha }}
+          path: windows-test.log
           if-no-files-found: ignore
