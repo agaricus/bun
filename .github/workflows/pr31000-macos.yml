@@ -291,7 +291,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-${{ inputs.bun_sha }}
-          path: windows-test.log
+          path: bun/windows-test.log
           if-no-files-found: ignore
 
   publish-prerelease:
