@@ -23,8 +23,14 @@ on:
         required: false
         type: boolean
         default: false
+      reuse_linux_windows_from_run:
+        description: Reuse Linux and Windows build artifacts from a prior workflow run
+        required: false
+        type: string
+        default: ""
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -126,7 +132,7 @@ jobs:
           if-no-files-found: ignore
 
   linux-x64-build:
-    if: ${{ !inputs.skip_linux }}
+    if: ${{ !inputs.skip_linux && inputs.reuse_linux_windows_from_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -175,7 +181,7 @@ jobs:
           if-no-files-found: error
 
   linux-x64:
-    if: ${{ !inputs.skip_linux }}
+    if: ${{ !cancelled() && !inputs.skip_linux && (inputs.reuse_linux_windows_from_run != '' || needs.linux-x64-build.result == 'success') }}
     needs: [linux-x64-build]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -188,9 +194,20 @@ jobs:
           path: bun
 
       - name: Download prebuilt Linux x64 binary archive
+        if: ${{ inputs.reuse_linux_windows_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-linux-x64-debug
+          path: bun/build/debug-artifact
+
+      - name: Reuse Linux x64 binary from a prior run
+        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          github-token: ${{ github.token }}
+          repository: agaricus/bun
+          run-id: ${{ inputs.reuse_linux_windows_from_run }}
           path: bun/build/debug-artifact
 
       - name: Restore executable mode
@@ -198,6 +215,16 @@ jobs:
         run: |
           mkdir -p build/debug
           tar -xzf build/debug-artifact/bun-debug.tar.gz -C build/debug
+
+      - name: Verify downloaded Linux binary revision
+        working-directory: bun
+        shell: bash
+        env:
+          BUN_DEBUG_QUIET_LOGS: "1"
+          EXPECTED_BUN_SHA: ${{ inputs.bun_sha }}
+        run: |
+          actual=$(./build/debug/bun-debug -p 'Bun.revision')
+          test "$actual" = "$EXPECTED_BUN_SHA"
 
       - name: Run focused suites with the downloaded binary
         working-directory: bun
@@ -208,6 +235,15 @@ jobs:
           set -o pipefail
           ./build/debug/bun-debug test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
 
+      - name: Publish reused Linux binary for downstream release
+        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          path: bun/build/debug-artifact/bun-debug.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -217,7 +253,7 @@ jobs:
           if-no-files-found: ignore
 
   windows-build:
-    if: ${{ !inputs.skip_windows }}
+    if: ${{ !inputs.skip_windows && inputs.reuse_linux_windows_from_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -251,7 +287,7 @@ jobs:
           if-no-files-found: error
 
   windows-x64:
-    if: ${{ !inputs.skip_windows }}
+    if: ${{ !cancelled() && !inputs.skip_windows && (inputs.reuse_linux_windows_from_run != '' || needs.windows-build.result == 'success') }}
     needs: [windows-build]
     runs-on: windows-2022
     timeout-minutes: 180
@@ -263,10 +299,32 @@ jobs:
           ref: ${{ inputs.bun_sha }}
           path: bun
       - name: Download cross-built Windows binary
+        if: ${{ inputs.reuse_linux_windows_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-windows-x64-build
           path: bun/build/debug-windows-x64
+
+      - name: Reuse Windows binary from a prior run
+        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-windows-x64-build
+          github-token: ${{ github.token }}
+          repository: agaricus/bun
+          run-id: ${{ inputs.reuse_linux_windows_from_run }}
+          path: bun/build/debug-windows-x64
+
+      - name: Verify downloaded Windows binary revision
+        shell: pwsh
+        env:
+          BUN_DEBUG_QUIET_LOGS: "1"
+          EXPECTED_BUN_SHA: ${{ inputs.bun_sha }}
+        run: |
+          $actual = (& .\bun\build\debug-windows-x64\bun-debug.exe -p 'Bun.revision').Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_BUN_SHA) {
+            throw "Unexpected Windows binary revision: $actual"
+          }
       - name: Run focused suites with the cross-built Windows binary
         shell: pwsh
         env:
@@ -277,6 +335,14 @@ jobs:
           Set-Location 'B:\'
           & .\build\debug-windows-x64\bun-debug.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish reused Windows binary for downstream release
+        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-windows-x64-build
+          path: bun/build/debug-windows-x64/bun-debug.exe
+          if-no-files-found: error
+
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
