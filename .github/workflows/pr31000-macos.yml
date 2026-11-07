@@ -179,7 +179,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-build
-          path: bun/build/debug-windows/bun-debug.exe
+          path: bun/build/debug-windows-x64/bun-debug.exe
           if-no-files-found: error
 
   windows-x64:
@@ -198,20 +198,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pr31000-windows-x64-build
-          path: bun/build/debug-windows
+          path: bun/build/debug-windows-x64
       - name: Run focused suites with the cross-built Windows binary
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           subst B: "$env:GITHUB_WORKSPACE\bun"
           Set-Location 'B:\'
-          & .\build\debug-windows\bun-debug.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
+          & .\build\debug-windows-x64\bun-debug.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload tested Windows binary
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-debug
-          path: bun/build/debug-windows/bun-debug.exe
+          path: bun/build/debug-windows-x64/bun-debug.exe
           if-no-files-found: error
       - name: Upload test log
         if: always()
