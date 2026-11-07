@@ -28,9 +28,9 @@ permissions:
   contents: read
 
 jobs:
-  macos-x64-build:
+  macos-x64-cross-build:
     if: ${{ !inputs.skip_macos }}
-    runs-on: macos-15-intel
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - name: Checkout Bun revision
@@ -43,37 +43,28 @@ jobs:
       - name: Set up bootstrap Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Set up micromamba
-        uses: mamba-org/setup-micromamba@v2
-        with:
-          init-shell: bash
-
-      - name: Install LLVM 23.1.1
-        shell: bash -el {0}
+      - name: Install LLVM 23 and cross-build tools
         run: |
-          micromamba create -y -p "$RUNNER_TEMP/llvm23" -c conda-forge llvm=23.1.1 clang=23.1.1
-          echo "BUN_TOOLCHAIN_LLVM=$RUNNER_TEMP/llvm23" >> "$GITHUB_ENV"
+          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo "$RUNNER_TEMP/llvm.sh" 23
+          sudo apt-get update
+          sudo apt-get install -y clang-23 lld-23 llvm-23-dev nasm g++
+          echo "BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-23" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
 
-      - name: Install NASM
-        run: brew install nasm
-
-      - name: Select Xcode 26
-        run: |
-          sudo xcode-select --switch "$XCODE_26_DEVELOPER_DIR"
-          xcodebuild -version
-
-      - name: Record runner and revision
+      - name: Record Linux build host and Darwin target
         working-directory: bun
         run: |
           uname -a
           git rev-parse HEAD
           bun --version
 
-      - name: Build debug Bun
+      - name: Cross-build Darwin x64 debug Bun
         working-directory: bun
         env:
           BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
-        run: bun run build --profile=debug --ci=on
+        run: bun run build --profile=debug --ci=on --os=darwin --arch=x64
 
       - name: Preserve macOS binary mode in a tar archive
         run: tar -czf "$RUNNER_TEMP/bun-debug.tar.gz" -C bun/build/debug bun-debug
@@ -88,7 +79,7 @@ jobs:
 
   macos-x64:
     if: ${{ !inputs.skip_macos }}
-    needs: [macos-x64-build]
+    needs: [macos-x64-cross-build]
     runs-on: macos-15-intel
     timeout-minutes: 180
     steps:
