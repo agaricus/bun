@@ -174,12 +174,12 @@ jobs:
           echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
       - name: Cross-build Windows x64 release binary
         working-directory: bun
-        run: bun run build --profile=windows-x64-release --ci=on --target=bun.exe
+        run: bun run build --profile=windows-x64 --ci=on --target=bun.exe
       - name: Upload Windows binary for native tests
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-build
-          path: bun/build/release-windows-x64/bun.exe
+          path: bun/build/debug-windows/bun-debug.exe
           if-no-files-found: error
 
   windows-x64:
@@ -198,7 +198,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pr31000-windows-x64-build
-          path: bun/build/release-windows-x64
+          path: bun/build/debug-windows
       - name: Run focused suites with the cross-built Windows binary
         shell: pwsh
         run: |
@@ -211,7 +211,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-debug
-          path: bun/build/release-windows-x64/bun.exe
+          path: bun/build/debug-windows/bun-debug.exe
           if-no-files-found: error
       - name: Upload test log
         if: always()
@@ -253,7 +253,7 @@ jobs:
           out.mkdir()
           version = f"1.4.4-pr31000-{__import__('os').environ['BUN_SHA'][:11]}"
           for target, exe_name in [('darwin-x64', 'bun'), ('windows-x64', 'bun.exe'), ('linux-x64', 'bun')]:
-              pattern = 'bun.exe' if target == 'windows-x64' else 'bun-debug'
+              pattern = 'bun-debug.exe' if target == 'windows-x64' else 'bun-debug'
               files = list((root / target).glob(pattern))
               if len(files) != 1:
                   raise SystemExit(f'{target}: expected one tested bun-debug binary, found {files}')
@@ -264,7 +264,7 @@ jobs:
               exe.write_bytes(binary.read_bytes())
               exe.chmod(0o755)
               digest = hashlib.sha256(exe.read_bytes()).hexdigest()
-              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'windows-x64-release' if target == 'windows-x64' else 'debug', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
+              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'windows-x64' if target == 'windows-x64' else 'debug', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
               (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
               (dest / 'README.txt').write_text('Temporary debug binary built and tested in the PR 31000 fork workflow. Not an official Bun release.\n')
               zip_path = out / f'bun-{target}-{version}.zip'
