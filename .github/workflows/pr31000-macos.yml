@@ -24,7 +24,12 @@ on:
         type: boolean
         default: false
       reuse_platforms_from_run:
-        description: Reuse Linux and Windows build artifacts from a prior workflow run
+        description: Reuse Linux, Windows, and macOS build artifacts from a prior workflow run
+        required: false
+        type: string
+        default: ""
+      publish_from_run:
+        description: Publish already tested platform artifacts from a prior workflow run without rerunning tests
         required: false
         type: string
         default: ""
@@ -377,22 +382,54 @@ jobs:
           if-no-files-found: ignore
 
   publish-prerelease:
-    if: ${{ !inputs.skip_macos && !inputs.skip_windows && !inputs.skip_linux }}
+    if: ${{ !cancelled() && (inputs.publish_from_run != '' || (!inputs.skip_macos && !inputs.skip_windows && !inputs.skip_linux)) }}
     needs: [macos-x64, windows-x64, linux-x64]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - name: Download tested platform binaries
+      - name: Download tested platform binaries from this run
+        if: ${{ inputs.publish_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-macos-x64-release
           path: release-inputs/darwin-x64
-      - uses: actions/download-artifact@v4
+      - name: Download macOS binary from a prior run
+        if: ${{ inputs.publish_from_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-macos-x64-release
+          github-token: ${{ github.token }}
+          repository: agaricus/bun
+          run-id: ${{ inputs.publish_from_run }}
+          path: release-inputs/darwin-x64
+      - name: Download Windows binary from a prior run
+        if: ${{ inputs.publish_from_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-windows-x64-release
+          github-token: ${{ github.token }}
+          repository: agaricus/bun
+          run-id: ${{ inputs.publish_from_run }}
+          path: release-inputs/windows-x64
+      - name: Download Linux binary from a prior run
+        if: ${{ inputs.publish_from_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-linux-x64-release
+          github-token: ${{ github.token }}
+          repository: agaricus/bun
+          run-id: ${{ inputs.publish_from_run }}
+          path: release-inputs/linux-x64
+      - name: Download Windows binary from this run
+        if: ${{ inputs.publish_from_run == '' }}
+        uses: actions/download-artifact@v4
         with:
           name: pr31000-windows-x64-release
           path: release-inputs/windows-x64
-      - uses: actions/download-artifact@v4
+      - name: Download Linux binary from this run
+        if: ${{ inputs.publish_from_run == '' }}
+        uses: actions/download-artifact@v4
         with:
           name: pr31000-linux-x64-release
           path: release-inputs/linux-x64
