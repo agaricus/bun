@@ -66,20 +66,20 @@ jobs:
           git rev-parse HEAD
           bun --version
 
-      - name: Cross-build Darwin x64 debug Bun
+      - name: Cross-build Darwin x64 release Bun
         working-directory: bun
         env:
           BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
-        run: bun run build --profile=debug --ci=on --os=darwin --arch=x64
+        run: bun run build --profile=release --ci=on --os=darwin --arch=x64
 
       - name: Preserve macOS binary mode in a tar archive
-        run: tar -czf "$RUNNER_TEMP/bun-debug.tar.gz" -C bun/build/debug bun-debug
+        run: tar -czf "$RUNNER_TEMP/bun-profile.tar.gz" -C bun/build/release bun-profile
 
-      - name: Upload macOS x64 debug binary
+      - name: Upload macOS x64 release binary
         uses: actions/upload-artifact@v4
         with:
-          name: pr31000-macos-x64-debug
-          path: ${{ runner.temp }}/bun-debug.tar.gz
+          name: pr31000-macos-x64-release
+          path: ${{ runner.temp }}/bun-profile.tar.gz
           compression-level: 0
           if-no-files-found: error
 
@@ -99,23 +99,24 @@ jobs:
       - name: Download prebuilt macOS x64 binary archive
         uses: actions/download-artifact@v4
         with:
-          name: pr31000-macos-x64-debug
-          path: bun/build/debug-artifact
+          name: pr31000-macos-x64-release
+          path: bun/build/release-artifact
 
       - name: Restore executable mode
         working-directory: bun
         run: |
-          mkdir -p build/debug
-          tar -xzf build/debug-artifact/bun-debug.tar.gz -C build/debug
+          mkdir -p build/release
+          tar -xzf build/release-artifact/bun-profile.tar.gz -C build/release
 
       - name: Run focused suites with the downloaded binary
         working-directory: bun
         shell: bash
         env:
           BUN_DEBUG_QUIET_LOGS: "1"
+          BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
         run: |
           set -o pipefail
-          ./build/debug/bun-debug test \
+          ./build/release/bun-profile test --timeout=90000 \
             test/cli/install/npmrc.test.ts \
             test/js/web/fetch/fetch.tls.test.ts \
             test/js/web/fetch/fetch-redirect.test.ts \
@@ -163,20 +164,20 @@ jobs:
           git rev-parse HEAD
           bun --version
 
-      - name: Build debug Bun
+      - name: Build release Bun
         working-directory: bun
         env:
           BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
-        run: bun run build --profile=debug --ci=on
+        run: bun run build --profile=release --ci=on
 
       - name: Preserve Linux binary mode in a tar archive
-        run: tar -czf "$RUNNER_TEMP/bun-debug.tar.gz" -C bun/build/debug bun-debug
+        run: tar -czf "$RUNNER_TEMP/bun-profile.tar.gz" -C bun/build/release bun-profile
 
-      - name: Upload Linux x64 debug binary
+      - name: Upload Linux x64 release binary
         uses: actions/upload-artifact@v4
         with:
-          name: pr31000-linux-x64-debug
-          path: ${{ runner.temp }}/bun-debug.tar.gz
+          name: pr31000-linux-x64-release
+          path: ${{ runner.temp }}/bun-profile.tar.gz
           compression-level: 0
           if-no-files-found: error
 
@@ -197,33 +198,34 @@ jobs:
         if: ${{ inputs.reuse_linux_windows_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
-          name: pr31000-linux-x64-debug
-          path: bun/build/debug-artifact
+          name: pr31000-linux-x64-release
+          path: bun/build/release-artifact
 
       - name: Reuse Linux x64 binary from a prior run
         if: ${{ inputs.reuse_linux_windows_from_run != '' }}
         uses: actions/download-artifact@v4
         with:
-          name: pr31000-linux-x64-debug
+          name: pr31000-linux-x64-release
           github-token: ${{ github.token }}
           repository: agaricus/bun
           run-id: ${{ inputs.reuse_linux_windows_from_run }}
-          path: bun/build/debug-artifact
+          path: bun/build/release-artifact
 
       - name: Restore executable mode
         working-directory: bun
         run: |
-          mkdir -p build/debug
-          tar -xzf build/debug-artifact/bun-debug.tar.gz -C build/debug
+          mkdir -p build/release
+          tar -xzf build/release-artifact/bun-profile.tar.gz -C build/release
 
       - name: Verify downloaded Linux binary revision
         working-directory: bun
         shell: bash
         env:
           BUN_DEBUG_QUIET_LOGS: "1"
+          BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
           EXPECTED_BUN_SHA: ${{ inputs.bun_sha }}
         run: |
-          actual=$(./build/debug/bun-debug -p 'Bun.revision')
+          actual=$(./build/release/bun-profile -p 'Bun.revision')
           test "$actual" = "$EXPECTED_BUN_SHA"
 
       - name: Run focused suites with the downloaded binary
@@ -231,16 +233,17 @@ jobs:
         shell: bash
         env:
           BUN_DEBUG_QUIET_LOGS: "1"
+          BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
         run: |
           set -o pipefail
-          ./build/debug/bun-debug test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
+          ./build/release/bun-profile test --timeout=90000 test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
 
       - name: Publish reused Linux binary for downstream release
         if: ${{ inputs.reuse_linux_windows_from_run != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: pr31000-linux-x64-debug
-          path: bun/build/debug-artifact/bun-debug.tar.gz
+          name: pr31000-linux-x64-release
+          path: bun/build/release-artifact/bun-profile.tar.gz
           compression-level: 0
           if-no-files-found: error
 
@@ -274,16 +277,16 @@ jobs:
           sudo apt-get install -y clang-23 lld-23 llvm-23-dev nasm g++
           echo "BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-23" >> "$GITHUB_ENV"
           echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
-      - name: Cross-build Windows x64 debug binary
+      - name: Cross-build Windows x64 release binary
         working-directory: bun
         env:
           BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
-        run: bun run build --profile=windows-x64 --ci=on
+        run: bun run build --profile=windows-x64-release --ci=on
       - name: Upload Windows binary for native tests
         uses: actions/upload-artifact@v4
         with:
-          name: pr31000-windows-x64-build
-          path: bun/build/debug-windows-x64/bun-debug.exe
+          name: pr31000-windows-x64-release
+          path: bun/build/release-windows-x64/bun-profile.exe
           if-no-files-found: error
 
   windows-x64:
@@ -302,45 +305,47 @@ jobs:
         if: ${{ inputs.reuse_linux_windows_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
-          name: pr31000-windows-x64-build
-          path: bun/build/debug-windows-x64
+          name: pr31000-windows-x64-release
+          path: bun/build/release-windows-x64
 
       - name: Reuse Windows binary from a prior run
         if: ${{ inputs.reuse_linux_windows_from_run != '' }}
         uses: actions/download-artifact@v4
         with:
-          name: pr31000-windows-x64-build
+          name: pr31000-windows-x64-release
           github-token: ${{ github.token }}
           repository: agaricus/bun
           run-id: ${{ inputs.reuse_linux_windows_from_run }}
-          path: bun/build/debug-windows-x64
+          path: bun/build/release-windows-x64
 
       - name: Verify downloaded Windows binary revision
         shell: pwsh
         env:
           BUN_DEBUG_QUIET_LOGS: "1"
+          BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
           EXPECTED_BUN_SHA: ${{ inputs.bun_sha }}
         run: |
-          $actual = (& .\bun\build\debug-windows-x64\bun-debug.exe -p 'Bun.revision').Trim()
+          $actual = (& .\bun\build\release-windows-x64\bun-profile.exe -p 'Bun.revision').Trim()
           if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_BUN_SHA) {
             throw "Unexpected Windows binary revision: $actual"
           }
-      - name: Run focused suites with the cross-built Windows binary
+      - name: Run focused suites with the cross-built Windows release binary
         shell: pwsh
         env:
           BUN_DEBUG_QUIET_LOGS: "1"
+          BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
         run: |
           $ErrorActionPreference = 'Stop'
           subst B: "$env:GITHUB_WORKSPACE\bun"
           Set-Location 'B:\'
-          & .\build\debug-windows-x64\bun-debug.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
+          & .\build\release-windows-x64\bun-profile.exe test --timeout=90000 test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish reused Windows binary for downstream release
         if: ${{ inputs.reuse_linux_windows_from_run != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: pr31000-windows-x64-build
-          path: bun/build/debug-windows-x64/bun-debug.exe
+          name: pr31000-windows-x64-release
+          path: bun/build/release-windows-x64/bun-profile.exe
           if-no-files-found: error
 
       - name: Upload test log
@@ -361,21 +366,21 @@ jobs:
       - name: Download tested platform binaries
         uses: actions/download-artifact@v4
         with:
-          name: pr31000-macos-x64-debug
+          name: pr31000-macos-x64-release
           path: release-inputs/darwin-x64
       - uses: actions/download-artifact@v4
         with:
-          name: pr31000-windows-x64-build
+          name: pr31000-windows-x64-release
           path: release-inputs/windows-x64
       - uses: actions/download-artifact@v4
         with:
-          name: pr31000-linux-x64-debug
+          name: pr31000-linux-x64-release
           path: release-inputs/linux-x64
 
       - name: Extract macOS and Linux binaries from tar archives
         run: |
-          tar -xzf release-inputs/darwin-x64/bun-debug.tar.gz -C release-inputs/darwin-x64
-          tar -xzf release-inputs/linux-x64/bun-debug.tar.gz -C release-inputs/linux-x64
+          tar -xzf release-inputs/darwin-x64/bun-profile.tar.gz -C release-inputs/darwin-x64
+          tar -xzf release-inputs/linux-x64/bun-profile.tar.gz -C release-inputs/linux-x64
 
       - name: Package Maven JARs and ZIPs from tested binaries
         env:
@@ -388,10 +393,10 @@ jobs:
           out.mkdir()
           version = f"1.4.4-pr31000-{__import__('os').environ['BUN_SHA'][:11]}"
           for target, exe_name in [('darwin-x64', 'bun'), ('windows-x64', 'bun.exe'), ('linux-x64', 'bun')]:
-              pattern = 'bun-debug.exe' if target == 'windows-x64' else 'bun-debug'
+              pattern = 'bun-profile.exe' if target == 'windows-x64' else 'bun-profile'
               files = list((root / target).glob(pattern))
               if len(files) != 1:
-                  raise SystemExit(f'{target}: expected one tested bun-debug binary, found {files}')
+                  raise SystemExit(f'{target}: expected one tested release Bun binary, found {files}')
               binary = files[0]
               dest = out / f'bun-{target}-{version}'
               dest.mkdir()
@@ -399,9 +404,9 @@ jobs:
               exe.write_bytes(binary.read_bytes())
               exe.chmod(0o755)
               digest = hashlib.sha256(exe.read_bytes()).hexdigest()
-              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'windows-x64' if target == 'windows-x64' else 'debug', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
+              manifest = {'artifact_version': version, 'source_commit': __import__('os').environ['BUN_SHA'], 'target': target, 'profile': 'release', 'binary': exe_name, 'binary_sha256': digest, 'official_release': False}
               (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-              (dest / 'README.txt').write_text('Temporary debug binary built and tested in the PR 31000 fork workflow. Not an official Bun release.\n')
+              (dest / 'README.txt').write_text('Temporary release binary built and tested in the PR 31000 fork workflow. Not an official Bun release.\n')
               zip_path = out / f'bun-{target}-{version}.zip'
               with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
                   z.write(exe, exe_name)
