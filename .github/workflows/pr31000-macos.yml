@@ -483,4 +483,4 @@ jobs:
       - name: Upload assets to temporary prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload pr31000-056352c391c --repo agaricus/bun release-assets/* --clobber
+        run: gh release upload pr31000-056352c391c --repo agaricus/bun release-assets/*.zip release-assets/*.jar release-assets/SHA256SUMS --clobber
