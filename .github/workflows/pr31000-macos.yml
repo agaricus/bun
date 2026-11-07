@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  macos-x64:
+  macos-x64-build:
     if: ${{ !inputs.skip_macos }}
     runs-on: macos-15-intel
     timeout-minutes: 180
@@ -69,25 +69,60 @@ jobs:
           git rev-parse HEAD
           bun --version
 
-      - name: Build debug Bun and run focused suites
+      - name: Build debug Bun
+        working-directory: bun
+        env:
+          BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
+        run: bun run build --profile=debug --ci=on
+
+      - name: Preserve macOS binary mode in a tar archive
+        run: tar -czf "$RUNNER_TEMP/bun-debug.tar.gz" -C bun/build/debug bun-debug
+
+      - name: Upload macOS x64 debug binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-macos-x64-debug
+          path: ${{ runner.temp }}/bun-debug.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  macos-x64:
+    if: ${{ !inputs.skip_macos }}
+    needs: [macos-x64-build]
+    runs-on: macos-15-intel
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Bun revision
+        uses: actions/checkout@v4
+        with:
+          repository: oven-sh/bun
+          ref: ${{ inputs.bun_sha }}
+          path: bun
+
+      - name: Download prebuilt macOS x64 binary archive
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-macos-x64-debug
+          path: bun/build/debug-artifact
+
+      - name: Restore executable mode
+        working-directory: bun
+        run: |
+          mkdir -p build/debug
+          tar -xzf build/debug-artifact/bun-debug.tar.gz -C build/debug
+
+      - name: Run focused suites with the downloaded binary
         working-directory: bun
         shell: bash
         run: |
           set -o pipefail
-          bun bd test \
+          ./build/debug/bun-debug test \
             test/cli/install/npmrc.test.ts \
             test/js/web/fetch/fetch.tls.test.ts \
             test/js/web/fetch/fetch-redirect.test.ts \
             test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts \
             test/cli/install/bun-install-retry.test.ts \
             test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../macos-test.log
-
-      - name: Upload tested macos-x64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr31000-macos-x64-debug
-          path: bun/build/debug/bun-debug
-          if-no-files-found: error
 
       - name: Upload test log
         if: always()
@@ -97,7 +132,7 @@ jobs:
           path: macos-test.log
           if-no-files-found: ignore
 
-  linux-x64:
+  linux-x64-build:
     if: ${{ !inputs.skip_linux }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -112,13 +147,7 @@ jobs:
       - name: Set up bootstrap Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Set up micromamba
-        uses: mamba-org/setup-micromamba@v2
-        with:
-          init-shell: bash
-
       - name: Install LLVM 23 and native build tools
-        shell: bash
         run: |
           curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
           chmod +x "$RUNNER_TEMP/llvm.sh"
@@ -128,19 +157,61 @@ jobs:
           echo "BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-23" >> "$GITHUB_ENV"
           echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
 
-      - name: Build debug Bun and run focused suites
+      - name: Record runner and revision
+        working-directory: bun
+        run: |
+          uname -a
+          git rev-parse HEAD
+          bun --version
+
+      - name: Build debug Bun
+        working-directory: bun
+        env:
+          BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
+        run: bun run build --profile=debug --ci=on
+
+      - name: Preserve Linux binary mode in a tar archive
+        run: tar -czf "$RUNNER_TEMP/bun-debug.tar.gz" -C bun/build/debug bun-debug
+
+      - name: Upload Linux x64 debug binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          path: ${{ runner.temp }}/bun-debug.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  linux-x64:
+    if: ${{ !inputs.skip_linux }}
+    needs: [linux-x64-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Bun revision
+        uses: actions/checkout@v4
+        with:
+          repository: oven-sh/bun
+          ref: ${{ inputs.bun_sha }}
+          path: bun
+
+      - name: Download prebuilt Linux x64 binary archive
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-linux-x64-debug
+          path: bun/build/debug-artifact
+
+      - name: Restore executable mode
+        working-directory: bun
+        run: |
+          mkdir -p build/debug
+          tar -xzf build/debug-artifact/bun-debug.tar.gz -C build/debug
+
+      - name: Run focused suites with the downloaded binary
         working-directory: bun
         shell: bash
         run: |
           set -o pipefail
-          bun bd test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
-
-      - name: Upload tested linux-x64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr31000-linux-x64-debug
-          path: bun/build/debug/bun-debug
-          if-no-files-found: error
+          ./build/debug/bun-debug test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
 
       - name: Upload test log
         if: always()
@@ -174,6 +245,8 @@ jobs:
           echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
       - name: Cross-build Windows x64 debug binary
         working-directory: bun
+        env:
+          BUILDKITE_COMMIT: ${{ inputs.bun_sha }}
         run: bun run build --profile=windows-x64 --ci=on
       - name: Upload Windows binary for native tests
         uses: actions/upload-artifact@v4
@@ -207,12 +280,6 @@ jobs:
           Set-Location 'B:\'
           & .\build\debug-windows-x64\bun-debug.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload tested Windows binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr31000-windows-x64-debug
-          path: bun/build/debug-windows-x64/bun-debug.exe
-          if-no-files-found: error
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -235,12 +302,17 @@ jobs:
           path: release-inputs/darwin-x64
       - uses: actions/download-artifact@v4
         with:
-          name: pr31000-windows-x64-debug
+          name: pr31000-windows-x64-build
           path: release-inputs/windows-x64
       - uses: actions/download-artifact@v4
         with:
           name: pr31000-linux-x64-debug
           path: release-inputs/linux-x64
+
+      - name: Extract macOS and Linux binaries from tar archives
+        run: |
+          tar -xzf release-inputs/darwin-x64/bun-debug.tar.gz -C release-inputs/darwin-x64
+          tar -xzf release-inputs/linux-x64/bun-debug.tar.gz -C release-inputs/linux-x64
 
       - name: Package Maven JARs and ZIPs from tested binaries
         env:
