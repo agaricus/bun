@@ -23,7 +23,7 @@ on:
         required: false
         type: boolean
         default: false
-      reuse_linux_windows_from_run:
+      reuse_platforms_from_run:
         description: Reuse Linux and Windows build artifacts from a prior workflow run
         required: false
         type: string
@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   macos-x64-cross-build:
-    if: ${{ !inputs.skip_macos }}
+    if: ${{ !inputs.skip_macos && inputs.reuse_platforms_from_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -84,7 +84,7 @@ jobs:
           if-no-files-found: error
 
   macos-x64:
-    if: ${{ !inputs.skip_macos }}
+    if: ${{ !cancelled() && !inputs.skip_macos && (inputs.reuse_platforms_from_run != '' || needs.macos-x64-cross-build.result == 'success') }}
     needs: [macos-x64-cross-build]
     runs-on: macos-15-intel
     timeout-minutes: 180
@@ -97,9 +97,20 @@ jobs:
           path: bun
 
       - name: Download prebuilt macOS x64 binary archive
+        if: ${{ inputs.reuse_platforms_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-macos-x64-release
+          path: bun/build/release-artifact
+
+      - name: Reuse macOS x64 binary from a prior run
+        if: ${{ inputs.reuse_platforms_from_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: pr31000-macos-x64-release
+          github-token: ${{ github.token }}
+          repository: agaricus/bun
+          run-id: ${{ inputs.reuse_platforms_from_run }}
           path: bun/build/release-artifact
 
       - name: Restore executable mode
@@ -116,13 +127,22 @@ jobs:
           BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
         run: |
           set -o pipefail
-          ./build/release/bun-profile test --timeout=90000 \
+          ./build/release/bun-profile --expose-internals test --timeout=90000 \
             test/cli/install/npmrc.test.ts \
             test/js/web/fetch/fetch.tls.test.ts \
             test/js/web/fetch/fetch-redirect.test.ts \
             test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts \
             test/cli/install/bun-install-retry.test.ts \
             test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../macos-test.log
+
+      - name: Publish reused macOS binary for downstream release
+        if: ${{ inputs.reuse_platforms_from_run != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31000-macos-x64-release
+          path: bun/build/release-artifact/bun-profile.tar.gz
+          compression-level: 0
+          if-no-files-found: error
 
       - name: Upload test log
         if: always()
@@ -133,7 +153,7 @@ jobs:
           if-no-files-found: ignore
 
   linux-x64-build:
-    if: ${{ !inputs.skip_linux && inputs.reuse_linux_windows_from_run == '' }}
+    if: ${{ !inputs.skip_linux && inputs.reuse_platforms_from_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -182,7 +202,7 @@ jobs:
           if-no-files-found: error
 
   linux-x64:
-    if: ${{ !cancelled() && !inputs.skip_linux && (inputs.reuse_linux_windows_from_run != '' || needs.linux-x64-build.result == 'success') }}
+    if: ${{ !cancelled() && !inputs.skip_linux && (inputs.reuse_platforms_from_run != '' || needs.linux-x64-build.result == 'success') }}
     needs: [linux-x64-build]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -195,20 +215,20 @@ jobs:
           path: bun
 
       - name: Download prebuilt Linux x64 binary archive
-        if: ${{ inputs.reuse_linux_windows_from_run == '' }}
+        if: ${{ inputs.reuse_platforms_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-linux-x64-release
           path: bun/build/release-artifact
 
       - name: Reuse Linux x64 binary from a prior run
-        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        if: ${{ inputs.reuse_platforms_from_run != '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-linux-x64-release
           github-token: ${{ github.token }}
           repository: agaricus/bun
-          run-id: ${{ inputs.reuse_linux_windows_from_run }}
+          run-id: ${{ inputs.reuse_platforms_from_run }}
           path: bun/build/release-artifact
 
       - name: Restore executable mode
@@ -236,10 +256,10 @@ jobs:
           BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1"
         run: |
           set -o pipefail
-          ./build/release/bun-profile test --timeout=90000 test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
+          ./build/release/bun-profile --expose-internals test --timeout=90000 test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
 
       - name: Publish reused Linux binary for downstream release
-        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        if: ${{ inputs.reuse_platforms_from_run != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-linux-x64-release
@@ -256,7 +276,7 @@ jobs:
           if-no-files-found: ignore
 
   windows-build:
-    if: ${{ !inputs.skip_windows && inputs.reuse_linux_windows_from_run == '' }}
+    if: ${{ !inputs.skip_windows && inputs.reuse_platforms_from_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -290,7 +310,7 @@ jobs:
           if-no-files-found: error
 
   windows-x64:
-    if: ${{ !cancelled() && !inputs.skip_windows && (inputs.reuse_linux_windows_from_run != '' || needs.windows-build.result == 'success') }}
+    if: ${{ !cancelled() && !inputs.skip_windows && (inputs.reuse_platforms_from_run != '' || needs.windows-build.result == 'success') }}
     needs: [windows-build]
     runs-on: windows-2022
     timeout-minutes: 180
@@ -302,20 +322,20 @@ jobs:
           ref: ${{ inputs.bun_sha }}
           path: bun
       - name: Download cross-built Windows binary
-        if: ${{ inputs.reuse_linux_windows_from_run == '' }}
+        if: ${{ inputs.reuse_platforms_from_run == '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-windows-x64-release
           path: bun/build/release-windows-x64
 
       - name: Reuse Windows binary from a prior run
-        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        if: ${{ inputs.reuse_platforms_from_run != '' }}
         uses: actions/download-artifact@v4
         with:
           name: pr31000-windows-x64-release
           github-token: ${{ github.token }}
           repository: agaricus/bun
-          run-id: ${{ inputs.reuse_linux_windows_from_run }}
+          run-id: ${{ inputs.reuse_platforms_from_run }}
           path: bun/build/release-windows-x64
 
       - name: Verify downloaded Windows binary revision
@@ -338,10 +358,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           subst B: "$env:GITHUB_WORKSPACE\bun"
           Set-Location 'B:\'
-          & .\build\release-windows-x64\bun-profile.exe test --timeout=90000 test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
+          & .\build\release-windows-x64\bun-profile.exe --expose-internals test --timeout=90000 test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish reused Windows binary for downstream release
-        if: ${{ inputs.reuse_linux_windows_from_run != '' }}
+        if: ${{ inputs.reuse_platforms_from_run != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: pr31000-windows-x64-release
