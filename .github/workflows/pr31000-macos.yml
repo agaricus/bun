@@ -172,9 +172,9 @@ jobs:
           sudo apt-get install -y clang-23 lld-23 llvm-23-dev nasm g++
           echo "BUN_TOOLCHAIN_LLVM=/usr/lib/llvm-23" >> "$GITHUB_ENV"
           echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
-      - name: Cross-build Windows x64 release binary
+      - name: Cross-build Windows x64 debug binary
         working-directory: bun
-        run: bun run build --profile=windows-x64 --ci=on --target=bun.exe
+        run: bun run build --profile=windows-x64 --ci=on
       - name: Upload Windows binary for native tests
         uses: actions/upload-artifact@v4
         with:
@@ -205,7 +205,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           subst B: "$env:GITHUB_WORKSPACE\bun"
           Set-Location 'B:\'
-          & .\build\release-windows-x64\bun.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
+          & .\build\debug-windows\bun-debug.exe test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | Tee-Object -FilePath windows-test.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload tested Windows binary
         uses: actions/upload-artifact@v4
