@@ -114,6 +114,8 @@ jobs:
       - name: Run focused suites with the downloaded binary
         working-directory: bun
         shell: bash
+        env:
+          BUN_DEBUG_QUIET_LOGS: "1"
         run: |
           set -o pipefail
           ./build/debug/bun-debug test \
@@ -209,6 +211,8 @@ jobs:
       - name: Run focused suites with the downloaded binary
         working-directory: bun
         shell: bash
+        env:
+          BUN_DEBUG_QUIET_LOGS: "1"
         run: |
           set -o pipefail
           ./build/debug/bun-debug test test/cli/install/npmrc.test.ts test/js/web/fetch/fetch.tls.test.ts test/js/web/fetch/fetch-redirect.test.ts test/js/web/fetch/fetch-proxy-tls-intern-race.test.ts test/cli/install/bun-install-retry.test.ts test/cli/install/bun-pm-diff.test.ts 2>&1 | tee ../linux-test.log
@@ -274,6 +278,8 @@ jobs:
           path: bun/build/debug-windows-x64
       - name: Run focused suites with the cross-built Windows binary
         shell: pwsh
+        env:
+          BUN_DEBUG_QUIET_LOGS: "1"
         run: |
           $ErrorActionPreference = 'Stop'
           subst B: "$env:GITHUB_WORKSPACE\bun"
