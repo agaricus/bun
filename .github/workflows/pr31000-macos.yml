@@ -439,16 +439,26 @@ jobs:
           tar -xzf release-inputs/darwin-x64/bun-profile.tar.gz -C release-inputs/darwin-x64
           tar -xzf release-inputs/linux-x64/bun-profile.tar.gz -C release-inputs/linux-x64
 
+      - name: Resolve release version and tag
+        id: meta
+        env:
+          BUN_SHA: ${{ inputs.bun_sha }}
+        run: |
+          version="$(release-inputs/linux-x64/bun-profile -p 'Bun.version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=pr31000-${BUN_SHA:0:11}" >> "$GITHUB_OUTPUT"
+
       - name: Package Maven JARs and ZIPs from tested binaries
         env:
           BUN_SHA: ${{ inputs.bun_sha }}
+          BUN_VERSION: ${{ steps.meta.outputs.version }}
         run: |
           python3 - <<'PY'
           import hashlib, json, pathlib, zipfile
           root = pathlib.Path('release-inputs')
           out = pathlib.Path('release-assets')
           out.mkdir()
-          version = f"1.4.4-pr31000-{__import__('os').environ['BUN_SHA'][:11]}"
+          version = f"{__import__('os').environ['BUN_VERSION']}-pr31000-{__import__('os').environ['BUN_SHA'][:11]}"
           for target, exe_name in [('darwin-x64', 'bun'), ('windows-x64', 'bun.exe'), ('linux-x64', 'bun')]:
               pattern = 'bun-profile.exe' if target == 'windows-x64' else 'bun-profile'
               files = list((root / target).glob(pattern))
@@ -480,7 +490,16 @@ jobs:
           (out / 'SHA256SUMS').write_text('\n'.join(sums) + '\n')
           PY
 
-      - name: Upload assets to temporary prerelease
+      - name: Publish temporary prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload pr31000-056352c391c --repo agaricus/bun release-assets/*.zip release-assets/*.jar release-assets/SHA256SUMS --clobber
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUN_SHA: ${{ inputs.bun_sha }}
+        run: |
+          if ! gh release view "$TAG" --repo agaricus/bun >/dev/null 2>&1; then
+            gh release create "$TAG" --repo agaricus/bun --prerelease \
+              --title "Bun $VERSION PR #31000 temporary artifacts" \
+              --notes "Unofficial, temporary build of oven-sh/bun PR #31000 from $BUN_SHA. Not an official Bun release. Each archive contains the binary, manifest.json, and a README."
+          fi
+          gh release upload "$TAG" --repo agaricus/bun release-assets/*.zip release-assets/*.jar release-assets/SHA256SUMS --clobber
